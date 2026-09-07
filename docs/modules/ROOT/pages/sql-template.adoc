@@ -190,7 +190,7 @@ tpl.Render(new { Ativo="" }); // "" → traz todos (shorthand falsy)
 {IF:Status == 'A' or Status == 'B'}                           -- or → false+Warning Won't
 ----
 
-Gatilho `or/and 3+/()/!` → Won't até BUY >30% (ver `MIGRATION.md §8.4`, `print-13.md` t-odonto 208 regex `or 0%`).
+Suporte a `or`, `and` com 3+ fatores, `()` e `!` não está no escopo atual — use blocos aninhados ou sequenciais.
 
 == Ver também
 

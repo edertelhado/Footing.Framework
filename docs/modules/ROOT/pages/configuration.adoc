@@ -84,7 +84,7 @@ Resultado v3.4.2: `PASS PASS 5 interfaces, 2878 LOC, 11 regex, 0 erro TWE, 473 P
 == Tese microframework
 
 * `<3.5K LOC` (`2878`) — genérico, sem domínio, `Dapper + Channel + SqlTemplate 11 regex`
-* `≤11 regex` source-gen AOT — não virar `Jinja2` (`and/or/!/()/user.name` Won't até BUY >30%)
+* `≤11 regex` source-gen AOT — escopo fechado, sem virar `Jinja2`/OGNL
 * `0 deps` DB — app fornece `NpgsqlConnectionFactory` fora pack
 * `TWE true` strict — sem `WarningsNotAsErrors` pós-3.0.0
 
@@ -99,17 +99,15 @@ unzip -l /tmp/pack/Footing.Framework.3.4.2.nupkg | grep -E "README|LICENSE|icon.
 
 == Migration policy
 
-Breaking só delete `Obsolete` (SemVer major `2.4.0 → 3.0.0` remove `TypeHandlerRegistry/AddDependencyWalkAuto`). `Result/Pagination/Audit` Won't nunca foi stable — delete sem bump.
+Breaking apenas remoção de `Obsolete` (SemVer major). `Result/Pagination/Audit` nunca foram estáveis.
 
-Ver `MIGRATION.md §8.13` promoção `3.4.1 → 3.4.2` stable sem código, §8.14 `3.5.0` revisado docs Antora + `UseTransaction Won't` definitivo.
+== Quando puxar SG
 
-== Quando puxar SG (Won't definitivo print-26)
+Walk reflexivo é suficiente para monólito. Source Generator avaliado para futuro se necessário `PublishAot` + milhares de types.
 
-SG 2.5 SP só se TODOS: pivô microserviços CONFIRMADO + `PublishAot` + SLO `<50ms` + types `>500` + `BUY >30%` (todos). Monólito atual não tem — Walk permanece `4.0`.
+== Quando puxar Sample
 
-== Quando puxar Sample (Could 3.5.1)
-
-Sample `Academia 13 features` rebaixado `Should → Could` com gatilho: `BUY >30% clones` OU `≥3 pedidos "tem sample?"` OU `demo venda live`. Até lá **não reavaliar**.
+Samples não estão no escopo do framework — framework é agnóstico e genérico.
 
 == Auditoria @aud_carlos
 

@@ -265,7 +265,7 @@ var result = template.Render(new
 // ORDER BY u.Name
 ```
 
-#### Tags Suportadas (v3.4.2 — 11 tags, 11 regex — and/length/IFDEFINED intactos, Spec agnóstico, 473t verificado)
+#### Tags Suportadas
 
 | Tag | Descrição |
 |-----|-----------|
@@ -280,11 +280,11 @@ var result = template.Render(new
 | `{INCLUDE:Fragment}` / `{SQL:Fragment}` | Fragmento reutilizável DRY — `SqlTemplate.RegisterFragment("BaseColumns","u.Id, u.Name")` + `SELECT {INCLUDE:BaseColumns} FROM Users` → `SELECT u.Id, u.Name FROM Users` (`FragmentCache ConcurrentDictionary`, depth guard 5, miss → literal fail-safe) |
 | `{BIND:Var, value='%' + Param + '%'}` | Variável concatenação — `value` split `+` fora de `''/""`, concatena `'literal'` + `\w+` param, valida `Var ^[A-Za-z_]\w*$`, rejeita `;--/*` fail-safe, injeta `paramDict["Var"]=computed` antes de `IF/WHERE` — ex: `{BIND:LikePattern, value='%' + Name + '%'} ... {IF:LikePattern != null} AND Name LIKE @LikePattern {END}` com `Name="eder"` → `"%eder%"` |
 
-> **Removidos v2.0.0-alpha (breaking):** `{EQ}/{NE}/{LT}/{GT}/{GTE}/{GE}/{LTE}/{LE}` (9 tags bugadas só existência) + `{IFNOTNULL}/{IFNOTEMPTY}` — migrar para `{IF:Param}`, `{IF:Param == 'x'}`, `{IF:Param > 100}`, `{IF:Param != null}`, `{IF:Param != ''}`. Tags antigas permanecem literais (fail-safe visível). Ver `MIGRATION.md` §8.
+> **Removidos:** `{EQ}/{NE}/{LT}/{GT}/{GTE}/{GE}/{LTE}/{LE}` + `{IFNOTNULL}/{IFNOTEMPTY}` — use `{IF:Param}`, `{IF:Param == 'x'}`, `{IF:Param > 100}`, `{IF:Param != null}`, `{IF:Param != ''}`. Tags antigas permanecem literais (fail-safe visível).
 
-> **Fail-fast vs fail-safe (v2.4.0):** Template malformado `S1-S6` (`{IF:Name} ...` sem `{END}`, `{WHERE} ...` sem `{ENDWHERE}`, `{CHOOSE} ...` sem `{ENDCHOOSE}`, `{WHEN} ...` sem `{ENDWHEN}`, `{BETWEEN} ...` sem `{END}`, `{IF:Name` sem `}` → `Unclosed tag`, `{IFDEFINED:Ativo} ...` sem `{END}`) → **`SqlTemplateParseException` com `Tag/Expected/Line/Column/Snippet/Suggestion` (`: InvalidOperationException`)** em `SqlTemplate.Parse`/`RenderTemplate` guard + bubble `SqlTemplateLoader.Load` (fail-fast, igual MyBatis `BuilderException` no startup). Param erro (`Nmae` typo, `"abc" >100`, `IN "admin"`, `"' ; DROP"` valor) permanece **fail-safe omitido/false+Warning/placeholder** (dados resilientes). Ver `MIGRATION.md §8.8` e `print-21.md`.
+> **Fail-fast vs fail-safe:** Template malformado (`{IF:Name} ...` sem `{END}`, `{WHERE} ...` sem `{ENDWHERE}`, `{CHOOSE} ...` sem `{ENDCHOOSE}`, `{WHEN} ...` sem `{ENDWHEN}`, `{BETWEEN} ...` sem `{END}`, `{IF:Name` sem `}` → `Unclosed tag`, `{IFDEFINED:Ativo} ...` sem `{END}`) → **`SqlTemplateParseException`** com `Tag/Expected/Line/Column/Snippet/Suggestion` em `SqlTemplate.Parse`/`RenderTemplate` (fail-fast). Erro de parâmetro (`Nmae` typo, `"abc" >100`, `IN "admin"`) permanece **fail-safe omitido/false+Warning** (dados resilientes). Ver `docs/modules/ROOT/pages/sql-template.adoc#_fail_fast_vs_fail_safe`.
 
-#### Tri-state `null / Y / N` + `IS NULL` — `traz todos` vs `IS NULL` (v2.4.0 IFDEFINED 1 SP)
+#### Tri-state `null / Y / N` + `IS NULL` — `traz todos` vs `IS NULL`
 
 > **TL;DR:** `<select null/Y/N traz todos>` já é `{IF:Ativo} AND c.Ativo=@Ativo {END}` — `null / missing / "" → omitido → traz todos`, `Y/N → filtra`. Para buscar nulidade use `{IF:Ativo == null} AND c.Ativo IS NULL {END}` (BC `missing==null`). **Novo 2.4.0:** `{IFDEFINED:Ativo} AND c.Ativo IS NULL {END}` distingue `missing` (false) vs `null` (true) via `ContainsKey` — traz todos vs IS NULL sem 2 params.
 
@@ -293,7 +293,7 @@ var result = template.Render(new
 | **T1 traz-todos** | `{WHERE} {IF:Ativo} AND c.Ativo=@Ativo {END} {ENDWHERE}` | ❌ traz todos (WHERE some) | ❌ traz todos | ❌ traz todos (`IsNullOrEmpty`) | ✅ filtra Y | ✅ filtra N | ✅ **`<select null/Y/N traz todos>` — use este** |
 | **T3 IS NULL** | `{IF:Ativo == null} AND c.Ativo IS NULL {END}` | ✅ IS NULL (BC — `new {} == null true`) | ✅ IS NULL | ❌ (`"" != null` false) | ❌ | ❌ | Buscar `IS NULL` — `missing` e `null` hoje indistinguíveis para `== null` |
 
-> **And implícito:** `{IF:Ativo}` shorthand = `TryGetValue && v != null && !IsNullOrEmpty` — já é `Ativo != null and Ativo != ''` em um bloco. `{IF:Ativo != null}` sozinho **vaza** `""` (`"" != null` → true → renderiza `AND c.Ativo=''` indevido); `{IF:Ativo != ''}` vaza `null`. Para `and/or` explícito com operador (`{IF:Ativo != null and Ativo != ''}`) use 2 blocos sequenciais/aninhados ou aguardar backlog `and/or` Won't 3.0 (gatilho BUY >30% — ver `MIGRATION.md §8.4`).
+> **Dica:** `{IF:Ativo}` já verifica `Ativo != null && Ativo != ''` em um único bloco. `{IF:Ativo != null}` sozinho vaza `""` e `{IF:Ativo != ''}` vaza `null`; para combinar condições use 2 blocos sequenciais/aninhados: `{IF:Ativo != null} {IF:Ativo != ''} AND c.Ativo=@Ativo {END} {END}`.
 
 **4 estados (Y/N/IS NULL/Todos) — 2 params (docs, sem código, Opção 0):**
 
@@ -313,8 +313,7 @@ tpl.Render(new { Ativo="Y", BuscarNulos=false });            // filtra Y
 tpl.Render(new { Ativo="" }); // HTML "" → traz todos (shorthand falsy)
 ```
 
-> **IFDEFINED 2.4.0:** `IFDEFINED`/`IFNOTDEFINED`/`defined()` já implementado 2.4.0 1 SP — `missing` vs `null` via `ContainsKey`, `10→11 regex`, `and` compat (`defined(Ativo) and Ativo=='Y'`), `CHOOSE WHEN defined` compat. Ver `MIGRATION.md §8.8` e `print-21.md`.
-> **Backlog:** `and/or/!/()` permanece **Won't 3.0** com gatilho BUY >30% templates (ver `print-13.md`); `or` flat/`and` 3+ Won't 3.0.
+> **IFDEFINED:** `{IFDEFINED:Param}` / `{IFNOTDEFINED:Param}` e `{IF:defined(Param)}` distinguem `missing` vs `null` via `ContainsKey` — compatível com `and` (`defined(Ativo) and Ativo=='Y'`) e `CHOOSE WHEN`. Ver `docs/modules/ROOT/pages/sql-template.adoc#tri-state-nullyn`.
 
 ### IDbConnectionFactory
 
@@ -619,7 +618,7 @@ app.MapHealthChecks("/health");
 
 > **Framework só SPI (interface), app escolhe DB** — como `Spring Security UserDetailsService`. `0 PackageReference` `Npgsql/Firebird/OleDb/Redis` em `src`.
 
-### Idempotency SPI (0.1 SP, 2 LOC, 0 deps)
+### Idempotency SPI
 
 ```csharp
 // Framework SPI — src/Footing.Framework/Idempotency/Idempotency.cs
@@ -641,7 +640,7 @@ public async Task<IActionResult> Create([FromHeader(Name="Idempotency-Key")] str
 }
 ```
 
-### Outbox SPI + Processor (0.5 SP, 8 LOC, 0 deps)
+### Outbox SPI + Processor
 
 ```csharp
 // Framework SPI + Processor — src/Footing.Framework/Outbox/Outbox.cs
@@ -681,9 +680,9 @@ await outbox.SaveEventAsync(new PedidoCriadoEvent{PedidoId=pedido.Id},uow.Transa
 await uow.CommitAsync(); // Pedido+Outbox atômico → poll 2s → bus.Publish → MarkProcessed
 ```
 
-> **Won't 3.1.1 (veto):** `Result<T> railway` (7 LOC, recurso linguagem), `PagedResult<T> + QueryPagedAsync` (5 LOC, precisa dialect), `IAuditable/ISoftDelete` (5 LOC, snippet docs). App faz `record Paginacao<T>` 5 LOC ou `if/throw DomainException` idiomático. Ver `MIGRATION.md §8.10.1` + `print-28.md`.
+> **Fora de escopo:** `Result<T>`, `PagedResult<T>` e `IAuditable/ISoftDelete` não estão no framework — use `if/throw DomainException` ou `record Paginacao<T>` no app.
 
-## Specification — ISpecification\<T\> (v3.4.2 agnóstico verificado)
+## Specification — ISpecification\<T\>
 
 ```csharp
 using Footing.Framework.Specification;
@@ -694,7 +693,7 @@ var spec = ativo.And(adulto).Where(u => u.Name != "");
 var filtrados = users.Where(spec.IsSatisfiedBy).ToList(); // composable, sem DB, sem ORM
 ```
 
-## Migrations — SPI carteiro Y/N (v3.4.2 agnóstico 100% verificado)
+## Migrations — SPI carteiro Y/N
 
 > **Y/N 100% agnóstico:** `success CHAR(1) Y/N CHECK (success IN ('Y','N'))` em `docs/examples/Migrations/DDL/__migrations.sql` (PG CHAR(1), MSSQL CHAR(1), FB CHAR(1), dbf C(1)) — vence `BOOLEAN/BIT/INTEGER`. Alinha com `BoolCharYNTypeHandler` `bool→'Y'/'N'` `DbType.AnsiStringFixedLength Size=1`.
 

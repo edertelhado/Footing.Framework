@@ -2,7 +2,7 @@
 include::partial$_attributes.adoc[]
 :icons: font
 
-DI determinística sem Source Generator (SG Won't print-26). Walk reflexivo `50ms <3% startup` para monólito <500 types — SG 2.5 SP adiado até pivô microserviços CONFIRMADO.
+DI determinística via reflexão. Walk reflexivo `~50ms` para monólito <500 types — custo desprezível vs. complexidade de Source Generator.
 
 == AddDependencyWalk — Auto-Scan
 
@@ -99,11 +99,11 @@ Suporta `void`, `Task`, `ValueTask` — múltiplos `[PostConstruct]` invalido (`
 | Startup | `~50ms` para 300 types (`<3%` de `~1.5s` boot) | `~5ms` (economia `45ms` irrelevante)
 | Tipos | `<500` monólito | `>500` + SLO `<50ms` + `PublishAot` = gatilho SG
 | Build | 0 analyzer | `Generators 310L + Tests 3 + docs/poc 35K` removível `rm -rf`
-| Custo | `0` | `2.5 SP` (1.5+0.5+0.25+0.25)
-| Decisão | **Walk definitivo 3.x e 4.x** | Só se pivô microserviços CONFIRMADO (todos 4 gatilhos)
+| Custo | `0` | Alto (analyzer + manutenção)
+| Decisão | **Walk definitivo** | Avaliado para futuro se necessário `PublishAot` + milhares de types
 |===
 
-Ver `MIGRATION.md §8.11` + `print-26.md` SG Won't definitivo. Tag `poc/di-source-generator-archived` guarda POC.
+POC de SG arquivado em `poc/di-source-generator-archived` para referência.
 
 == Config — InjectConfig
 
