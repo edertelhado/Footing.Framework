@@ -101,36 +101,12 @@ Para métricas formais, use `BenchmarkDotNet` (opcional):
 
 == Diagrama
 
-[source,text]
+[source,mermaid]
 ----
-  IEnumerable<T> items
-        │
-        ▼
-  ┌─────────────────────────┐
-  │ PropsCache              │
-  │ (ConcurrentDictionary)  │
-  └────────────┬────────────┘
-               │
-               ▼
-  ┌─────────────────────────┐
-  │ Chunk 500               │
-  │ auto: 2100 / colCount   │
-  └────────────┬────────────┘
-               │
-               ▼
-  ┌─────────────────────────┐
-  │ INSERT INTO t VALUES    │
-  │ (DynamicParameters)     │
-  └────────────┬────────────┘
-               │
-               ▼
-  ┌─────────────────────────┐
-  │ Dapper ExecuteAsync     │
-  └────────────┬────────────┘
-               │
-               ▼
-  ┌─────────────────────────┐
-  │ PostgreSQL / MySQL /    │
-  │ SQLite / Firebird       │
-  └─────────────────────────┘
+flowchart LR
+  Items["IEnumerable items"] --> Cache["PropsCache ConcurrentDictionary"]
+  Cache --> Chunk["Chunk 500 and 2100 div colCount"]
+  Chunk --> SQL["INSERT INTO t VALUES params"]
+  SQL --> Dapper["ExecuteAsync"]
+  Dapper --> DB["PG MySQL SQLite Firebird"]
 ----

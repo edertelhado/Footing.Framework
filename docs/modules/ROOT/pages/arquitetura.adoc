@@ -6,59 +6,32 @@ Camadas, fluxo e princípios.
 
 == Camadas
 
-[source,text]
+[source,mermaid]
 ----
- ┌────────────┐     ┌──────────┐     ┌────────────┐     ┌─────────┐     ┌──────────────────┐
- │ Controller │────>│ Service  │────>│ Repository │────>│ Dapper  │────>│ IDbConnection     │
- └────────────┘     └────┬─────┘     └────────────┘     └─────────┘     │   Factory         │
-                         │                                              └────────┬─────────┘
-                         │                                                       │
-                         │              ┌──────────────┐               ┌──────────▼──────────┐
-                         ├─────────────>│ EventBus     │──────────────>│ PostgreSQL / Firebird│
-                         │              │ Channel<T>   │               └─────────────────────┘
-                         │              └──────┬───────┘
-                         │                     │
-                         │              ┌──────▼───────┐
-                         ├─────────────>│ EventHandler │
-                         │              └──────────────┘
-                         │
-                         │              ┌──────────────┐
-                         └─────────────>│ SqlBatch     │
-                                        │ chunked      │
-                                        └──────────────┘
-
-  MigrationRunner ──────────────────────> IDbConnectionFactory
-  ActivitySource  -.-> EventBus / Dapper / SqlBatch
-  Health Checks   -.-> IDbConnectionFactory / EventBus
+flowchart LR
+  Controller --> Service
+  Service --> Repository
+  Repository --> Dapper
+  Dapper --> Factory["IDbConnectionFactory"]
+  Factory --> DB[("PostgreSQL / Firebird")]
+  Service --> EB["EventBus Channel"]
+  EB --> Handler["IEventHandler Priority"]
+  Service --> Batch["SqlBatch chunked"]
+  MigrationRunner --> Factory
+  OTel["ActivitySource"] -.-> EB & Dapper & Batch
+  Health["Health Checks"] -.-> Factory & EB
 ----
 
 == Fluxo DI Walk → Lifecycle → Bus
 
-[source,text]
+[source,mermaid]
 ----
-  Assembly.GetTypes
-        │
-        ▼
-  ┌─────────────────────────────┐
-  │ Where Has Injectable /      │
-  │ Service / Repository        │
-  └─────────────┬───────────────┘
-                │
-                ▼
-  ┌─────────────────────────────┐
-  │ Map Attribute to Lifetime   │
-  └─────────────┬───────────────┘
-                │
-                ▼
-  ┌─────────────────────────────┐
-  │ Add ServiceDescriptor       │
-  └──────┬──────────────┬───────┘
-         │              │
-         ▼              ▼
-  ┌────────────┐  ┌────────────┐
-  │ Register   │  │ PostConstruct│
-  │ EventListeners│  │ PreDestroy  │
-  └────────────┘  └────────────┘
+flowchart TD
+  Scan["Assembly.GetTypes"] --> Filter["Where Has Injectable Service Repository"]
+  Filter --> Lifetime["Map Attribute to Lifetime"]
+  Lifetime --> Register["Add ServiceDescriptor"]
+  Register --> Listeners["RegisterEventListeners"]
+  Register --> Lifecycle["PostConstruct PreDestroy"]
 ----
 
 *Princípios:* agnóstico a banco, SPI `IOutboxStore/IIdempotencyStore/IMigrationJournal`, `<3.5K LOC`, fail-fast de estrutura vs fail-safe de dados.

@@ -3,7 +3,7 @@ include::partial$_attributes.adoc[]
 :icons: font
 :attribute-missing: skip
 
-SQL dinâmico com Dapper, agnóstico a banco. Pipeline de tags que resolve condições, loops e inclusões diretamente em arquivos `.sql` — sem ORM, sem `StringBuilder`.
+SQL dinâmico com Dapper, agnóstico a banco. Pipeline de processamento com tags `{IF}`, `{WHERE}`, `{IN}`, `{CHOOSE}`, `{BETWEEN}`, `{TRIM}`, `{SET}`, `{INCLUDE}`, `{BIND}`, `{IFDEFINED}`. Renderiza SQL e parâmetros separados — parâmetros nunca entram no string.
 
 == Tags suportadas
 
@@ -36,7 +36,7 @@ SQL dinâmico com Dapper, agnóstico a banco. Pipeline de tags que resolve condi
 | `{BETWEEN:CreatedAt} AND x BETWEEN @CreatedAtMin AND @CreatedAtMax {END}`
 
 | `{TRIM prefix="..." prefixOverrides="..." suffix="..." suffixOverrides="..."} ... {ENDTRIM}`
-| Remove prefixo/sufixo do conteúdo. Útil para limpar `AND`/`OR` soltos.
+| Remove prefixes/sufixos indesejados. Útil para limpar `WHERE`/`AND`/`OR`.
 | `{TRIM prefix="WHERE" prefixOverrides="AND\|OR "} AND x {ENDTRIM}` → `WHERE x`
 
 | `{SET} ... {ENDSET}`

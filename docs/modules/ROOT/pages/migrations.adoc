@@ -94,28 +94,18 @@ MigrationVersionParser.TryParse("001__baseline.sql", out var b);  // Type=BASELI
 
 == Runner
 
-[source,text]
+[source,mermaid]
 ----
-  GetScriptsAsync (FileSystem / EmbeddedResource)
-        │
-        ▼
-  OrderBy Version
-        │
-        ▼
-  GetFailedVersions ──(N pending)──> throw
-        │
-        ▼
-  ┌─── ForEach script ───────────────────────────┐
-  │                                               │
-  │   REPEATABLE?                                 │
-  │   ├── yes, diff  ──> ExecuteRawSql ──> MarkApplied Y  │
-  │   └── same       ──> skip                      │
-  │                                               │
-  │   applied?                                    │
-  │   └── no ──> ExecuteRawSql ──> MarkApplied Y  │
-  │                                               │
-  │   catch ──> MarkApplied N ──> throw            │
-  └───────────────────────────────────────────────┘
+flowchart LR
+  Scripts["FileSystem EmbeddedResource GetScriptsAsync"] --> Sort["OrderBy Version"]
+  Sort --> Check["GetFailedVersions throw if N pending"]
+  Check --> Loop["ForEach script"]
+  Loop --> Repeat{"REPEATABLE?"}
+  Repeat -->|yes diff| Exec["ExecuteRawSql"] --> JournalY["MarkApplied Y"]
+  Repeat -->|same| Skip["skip"]
+  Loop --> Applied{"applied?"}
+  Applied -->|no| Exec2["ExecuteRawSql"] --> JournalY2["MarkApplied Y"]
+  Exec -->|catch| JournalN["MarkApplied N throw"]
 ----
 
 *   Checksum `MigrationChecksum.Compute(sql)` SHA256 64 hex — drift gera `MigrationException`.
