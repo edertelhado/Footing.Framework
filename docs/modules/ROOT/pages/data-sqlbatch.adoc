@@ -1,8 +1,8 @@
-= SqlBatch — Batch Insert chunked
+= SqlBatch
 include::partial$_attributes.adoc[]
 :icons: font
 
-Insert em batch Dapper-friendly, DB-agnóstico (PG/MySQL/SQLite/SQL Server sem `DataTable/SqlBulkCopy`), chunking automático `500` com auto-ajuste para limite `2100` params SQL Server.
+Insert em batch Dapper-friendly, agnóstico a banco (PostgreSQL, SQL Server, SQLite, Firebird, dbf) sem `DataTable/SqlBulkCopy`, chunking automático `500` com auto-ajuste para limite `2100` params.
 
 == API
 
@@ -10,12 +10,11 @@ Insert em batch Dapper-friendly, DB-agnóstico (PG/MySQL/SQLite/SQL Server sem `
 ----
 using Footing.Framework.Data;
 
-public static class SqlBatch
-{
-    public static (string Sql, DynamicParameters Parameters) BuildBatchInsert<T>(string tableName, IEnumerable<T> items, string? columnsOverride = null);
-    public static Task<int> InsertBatchAsync<T>(IDbConnection conn, string tableName, IEnumerable<T> items, IDbTransaction? tx = null, int batchSize = 500, CancellationToken ct = default);
-    public static Task<int> InsertBatchAsync<T>(UnitOfWork uow, string tableName, IEnumerable<T> items, int batchSize = 500, CancellationToken ct = default);
-    public static void ValidateTableName(string tableName); // ^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$ — rejeita Users. / ; DROP
+public static class SqlBatch {
+  public static (string Sql, DynamicParameters Parameters) BuildBatchInsert<T>(string tableName, IEnumerable<T> items, string? columnsOverride = null);
+  public static Task<int> InsertBatchAsync<T>(IDbConnection conn, string tableName, IEnumerable<T> items, IDbTransaction? tx = null, int batchSize = 500, CancellationToken ct = default);
+  public static Task<int> InsertBatchAsync<T>(UnitOfWork uow, string tableName, IEnumerable<T> items, int batchSize = 500, CancellationToken ct = default);
+  public static void ValidateTableName(string tableName); // ^[A-Za-z_][\w]*(\.[\w]*)*$ — rejeita ; DROP
 }
 ----
 
@@ -38,7 +37,7 @@ var inserted = await SqlBatch.InsertBatchAsync(conn, "Users", users);
 // cada chunk é 1 ExecuteAsync — sem transação cruzada
 ----
 
-== Build apenas SQL (log/teste sem DB)
+== Build apenas SQL (teste sem DB)
 
 [source,csharp]
 ----
@@ -65,7 +64,7 @@ effective = Math.Min(batchSize, 2100 / colCount) // SQL Server 2100 params
 [source,csharp]
 ----
 SqlBatch.BuildBatchInsert("Users; DROP TABLE Users --", users); // throw ArgumentException
-SqlBatch.BuildBatchInsert("Users.", users);                      // throw (trailing dot 2.4.0)
+SqlBatch.BuildBatchInsert("Users.", users);                      // throw (trailing dot)
 SqlBatch.BuildBatchInsert("schema.Users", users);                // ok
 ----
 
@@ -75,12 +74,11 @@ Smoke tests validam `<2000ms` para `10k` renders:
 
 [source,csharp]
 ----
-[Fact] public void SqlTemplate_10k_renders_must_be_under_2s()
-{
-    var tpl = SqlTemplate.Parse("SELECT * FROM Users {WHERE} {IF:Name} AND Name=@Name {END} {ENDWHERE}");
-    var sw = Stopwatch.StartNew();
-    for(int i=0;i<10_000;i++) tpl.Render(new { Name="eder" });
-    Assert.True(sw.ElapsedMilliseconds < 2000);
+[Fact] public void SqlTemplate_10k_renders_must_be_under_2s() {
+  var tpl = SqlTemplate.Parse("SELECT * FROM Users {WHERE} {IF:Name} AND Name=@Name {END} {ENDWHERE}");
+  var sw = Stopwatch.StartNew();
+  for(int i=0;i<10_000;i++) tpl.Render(new { Name="eder" });
+  Assert.True(sw.ElapsedMilliseconds < 2000);
 }
 ----
 
@@ -95,10 +93,9 @@ Para métricas formais, use `BenchmarkDotNet` (opcional):
 
 [source,csharp]
 ----
-[MemoryDiagnoser] public class SqlTemplateBenchmarks
-{
-    private SqlTemplate _tpl = SqlTemplate.Parse("SELECT * FROM Users {WHERE} {IF:Name} AND Name=@Name {END} {ENDWHERE}");
-    [Benchmark] public SqlResult Render() => _tpl.Render(new { Name="eder" });
+[MemoryDiagnoser] public class SqlTemplateBenchmarks {
+  private SqlTemplate _tpl = SqlTemplate.Parse("SELECT * FROM Users {WHERE} {IF:Name} AND Name=@Name {END} {ENDWHERE}");
+  [Benchmark] public SqlResult Render() => _tpl.Render(new { Name="eder" });
 }
 ----
 
@@ -107,7 +104,7 @@ Para métricas formais, use `BenchmarkDotNet` (opcional):
 [source,mermaid]
 ----
 flowchart LR
-  Items["IEnumerable items"] --> Cache["PropsCache ConcurrentDictionary<br/>ReflectionCache shared"]
+  Items["IEnumerable items"] --> Cache["PropsCache ConcurrentDictionary"]
   Cache --> Chunk["Chunk 500 and 2100 div colCount"]
   Chunk --> SQL["INSERT INTO t VALUES params"]
   SQL --> Dapper["ExecuteAsync"]

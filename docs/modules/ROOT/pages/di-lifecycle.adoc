@@ -1,10 +1,10 @@
-= DI & Lifecycle — Auto-Scan Walk
+= DI & Lifecycle
 include::partial$_attributes.adoc[]
 :icons: font
 
-DI determinística via reflexão. Walk reflexivo `~50ms` para monólito <500 types — custo desprezível vs. complexidade de Source Generator.
+Auto-scan determinístico via reflexão. Decisão: Walk reflexivo — sem Source Generator.
 
-== AddDependencyWalk — Auto-Scan
+== AddDependencyWalk
 
 [source,csharp]
 ----
@@ -13,16 +13,14 @@ services.AddDependencyWalk("MeuProjeto", configuration, typeof(Program).Assembly
 services.AddDependencyWalk("MeuProjeto", configuration, typeof(Program).Assembly, typeof(UserRepository).Assembly);
 ----
 
-> Removido 3.0.0: `AddDependencyWalkAuto` (`[Obsolete]` desde `0.3.0-alpha`) → use `AddDependencyWalk` com assemblies explícitos.
-
 [source,mermaid]
 ----
 flowchart TD
-  Scan["Assembly.GetTypes StartsWith rootNamespace"] --> Filter["Where Has Injectable Service Repository<br/>try catch ReflectionTypeLoadException"]
-  Filter --> Lifetime["Map Attribute to Lifetime<br/>Service=Transient Repository=Scoped Injectable"]
-  Lifetime --> Register["services.Add ServiceDescriptor<br/>ActivatorUtilities.CreateInstance"]
-  Register --> Listeners["RegisterEventListeners<br/>Channel dedup ConcurrentDictionary"]
-  Register --> Lifecycle["PostConstruct to PreDestroy<br/>Disposable IAsyncDisposable"]
+  Scan["Assembly.GetTypes"] --> Filter["Where Has Injectable Service Repository"]
+  Filter --> Lifetime["Map Attribute to Lifetime"]
+  Lifetime --> Register["Add ServiceDescriptor"]
+  Register --> Listeners["RegisterEventListeners"]
+  Register --> Lifecycle["PostConstruct PreDestroy"]
 ----
 
 == Atributos
@@ -61,30 +59,27 @@ public class TenantScope { }
 
 == ResolverExtensions
 
-* Cria via `ActivatorUtilities.CreateInstance` (resolve deps DI)
-* Injeta `[InjectConfig]` de `IConfiguration`
-* Executa `[PostConstruct]` (sync/async)
-* Registra `[EventListener]` no EventBus (dedup `ConcurrentDictionary<(Type,MethodInfo),bool>`)
-* `DiSmokeTests` 2 testes agnósticos `GetServices<IRepo>.Count==1 + ValidateScopes` — detecta assembly esquecido sem SG.
+*   Cria via `ActivatorUtilities.CreateInstance` (resolve deps DI)
+*   Injeta `[InjectConfig]` de `IConfiguration`
+*   Executa `[PostConstruct]` (sync/async)
+*   Registra `[EventListener]` no EventBus
+*   `DiSmokeTests` 2 testes agnósticos `GetServices<IRepo>.Count==1 + ValidateScopes`
 
 == Lifecycle — PostConstruct / PreDestroy
 
 [source,csharp]
 ----
-public class EmailService
-{
-    private SmtpClient? _client;
+public class EmailService {
+  private SmtpClient? _client;
 
-    [PostConstruct]
-    public void Initialize() => _client = new SmtpClient("smtp.example.com");
+  [PostConstruct]
+  public void Initialize() => _client = new SmtpClient("smtp.example.com");
 
-    [PostConstruct]
-    public async Task InitializeAsync() => _client = await CreateClientAsync();
+  [PostConstruct]
+  public async Task InitializeAsync() => _client = await CreateClientAsync();
 
-    [PreDestroy]
-    public void Cleanup() => _client?.Dispose();
-
-    // async sem deadlock: LifecycleProxy.DisposeCore usa Task.Run(async()=>await task).GetAwaiter().GetResult()
+  [PreDestroy]
+  public void Cleanup() => _client?.Dispose();
 }
 ----
 
@@ -109,14 +104,19 @@ POC de SG arquivado em `poc/di-source-generator-archived`.
 
 [source,csharp]
 ----
-public class EmailSettings
-{
-    [InjectConfig("Smtp:Host")]
-    public string? Host { get; set; }
-    [InjectConfig("Smtp:Port")]
-    public int Port { get; set; }
+public class EmailSettings {
+  [InjectConfig("Smtp:Host")]
+  public string? Host { get; set; }
+
+  [InjectConfig("Smtp:Port")]
+  public int Port { get; set; }
 }
 // preenchido via IConfiguration automaticamente pelo ResolverExtensions
 ----
 
 TIP: Para testes, use `ResolverExtensions` direto sem Host — ver `DiSmokeTests.cs`.
+
+== Ver também
+
+*   xref:eventbus.adoc[EventBus] — registro automático de handlers
+*   xref:observability.adoc[OTel & Health] — `PostConstruct` sem deadlock

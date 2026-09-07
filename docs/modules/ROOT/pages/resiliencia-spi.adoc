@@ -1,61 +1,54 @@
-= Outbox & Idempotency — SPI agnóstico
+= Resiliência SPI
 include::partial$_attributes.adoc[]
 :icons: font
 
-Framework só SPI (interface), app escolhe DB — como `Spring Security UserDetailsService`. `0 PackageReference Npgsql/Firebird/OleDb/Redis` em `src/` (ver `GLOBAL_RULES 59L`).
+Framework só SPI (interface), app escolhe banco — `0 PackageReference Npgsql/Firebird/OleDb/Redis` no `src/`.
 
-== Idempotency SPI — 2 LOC 0 deps
+== Idempotency
 
 [source,csharp]
 ----
-public interface IIdempotencyStore
-{
-    bool TryGet<T>(string key, out T? value);
-    void Set<T>(string key, T value, TimeSpan? ttl = null);
-    Task<T> GetOrCreateAsync<T>(string key, Func<Task<T>> factory, TimeSpan? ttl = null, CancellationToken ct = default);
+public interface IIdempotencyStore {
+  bool TryGet<T>(string key, out T? value);
+  void Set<T>(string key, T value, TimeSpan? ttl = null);
+  Task<T> GetOrCreateAsync<T>(string key, Func<Task<T>> factory, TimeSpan? ttl = null, CancellationToken ct = default);
 }
 
-// App registra impl — exemplo Memory (docs/snippets, não pack, single-pod)
+// App registra — exemplo Memory (single-pod)
 services.AddSingleton<IIdempotencyStore, MeuIdempotencyStore>(); // Redis/Firebird/dbf
 
 // Controller — Idempotency-Key header
 [HttpPost("/pedidos")]
-public async Task<IActionResult> Create([FromHeader(Name="Idempotency-Key")] string key, CreatePedidoDto dto, [FromServices] IIdempotencyStore store)
-{
-    if (string.IsNullOrEmpty(key)) return BadRequest("Idempotency-Key required");
-    var pedido = await store.GetOrCreateAsync(key, () => handler.Create(dto), TimeSpan.FromHours(24));
-    return Created($"/pedidos/{pedido.Id}", pedido);
+public async Task<IActionResult> Create([FromHeader(Name="Idempotency-Key")] string key, CreatePedidoDto dto, [FromServices] IIdempotencyStore store) {
+  if (string.IsNullOrEmpty(key)) return BadRequest("Idempotency-Key required");
+  var pedido = await store.GetOrCreateAsync(key, () => handler.Create(dto), TimeSpan.FromHours(24));
+  return Created($"/pedidos/{pedido.Id}", pedido);
 }
 ----
-
-Memory snippet (include):
 
 [source,csharp]
 ----
 include::example$MemoryIdempotencyStore.cs[]
 ----
 
-CAUTION: `MemoryIdempotencyStore` via `IMemoryCache` é single-pod; `K8s 2 pods` quebra — use `RedisIdempotencyStore(IDistributedCache)` app-side. Por isso SPI 0 deps, impl em `docs/snippets` não `src/`.
+`MemoryIdempotencyStore` via `IMemoryCache` é single-pod; em cluster use `RedisIdempotencyStore`.
 
-== Outbox SPI + Processor — 8 LOC 0 deps
+== Outbox + Processor
 
 [source,csharp]
 ----
 public sealed record OutboxMessage(Guid Id, string Type, string Payload, DateTime CreatedAt, DateTime? ProcessedAt = null, int Attempts = 0, string? LastError = null);
 
-public interface IOutboxStore
-{
-    Task SaveAsync(OutboxMessage m, IDbTransaction? tx = null, CancellationToken ct = default);
-    Task<IReadOnlyList<OutboxMessage>> GetUnprocessedAsync(int batch = 100, CancellationToken ct = default);
-    Task MarkProcessedAsync(Guid id, CancellationToken ct = default);
-    Task MarkFailedAsync(Guid id, string error, CancellationToken ct = default);
+public interface IOutboxStore {
+  Task SaveAsync(OutboxMessage m, IDbTransaction? tx = null, CancellationToken ct = default);
+  Task<IReadOnlyList<OutboxMessage>> GetUnprocessedAsync(int batch = 100, CancellationToken ct = default);
+  Task MarkProcessedAsync(Guid id, CancellationToken ct = default);
+  Task MarkFailedAsync(Guid id, string error, CancellationToken ct = default);
 }
 
-public sealed class OutboxProcessor(IOutboxStore store, EventBus bus, ILogger<OutboxProcessor>? log = null) : BackgroundService
-{
-    public TimeSpan Interval { get; set; } = TimeSpan.FromSeconds(2);
-    public int BatchSize { get; set; } = 100;
-    // poll GetUnprocessed → bus.Publish → MarkProcessed / MarkFailed
+public sealed class OutboxProcessor(IOutboxStore store, EventBus bus, ILogger<OutboxProcessor>? log = null) : BackgroundService {
+  public TimeSpan Interval { get; set; } = TimeSpan.FromSeconds(2);
+  public int BatchSize { get; set; } = 100;
 }
 ----
 
@@ -65,22 +58,20 @@ sequenceDiagram
   participant Tx as UnitOfWork Tx
   participant App as App Service
   participant Outbox as IOutboxStore
-  participant DB as DB (PG/FB/dbf)
-  participant Proc as OutboxProcessor 2s/100
+  participant DB as DB
+  participant Proc as OutboxProcessor
   participant Bus as EventBus
-  App->>Tx: BeginAsync()
-  App->>DB: INSERT INTO Pedidos ... (tx)
-  App->>Outbox: SaveEventAsync(PedidoCriadoEvent, tx) -- mesma Tx
-  App->>Tx: CommitAsync() // Pedido+Outbox atômico
-  Proc->>Outbox: GetUnprocessed(Batch100)
-  Outbox-->>Proc: [OutboxMessage]
-  Proc->>Bus: Publish(event)
-  Bus-->>Proc: ok
-  Proc->>Outbox: MarkProcessed(id)
-  Proc->>Outbox: MarkFailed on error (Attempts+LastError)
+  App->>Tx: BeginAsync
+  App->>DB: INSERT INTO Pedidos tx
+  App->>Outbox: SaveEventAsync tx mesma Tx
+  App->>Tx: CommitAsync Pedido+Outbox atômico
+  Proc->>Outbox: GetUnprocessed Batch100
+  Outbox-->>Proc: OutboxMessage
+  Proc->>Bus: Publish
+  Proc->>Outbox: MarkProcessed
 ----
 
-== Tabs agnóstico — escolha seu DB
+== Tabs agnóstico — escolha seu banco
 
 === PostgreSQL
 
@@ -89,7 +80,7 @@ sequenceDiagram
 include::example$Outbox/NpgsqlOutboxStore.cs[]
 ----
 
-Destaque PG: `SELECT * FROM Outbox WHERE ProcessedAt IS NULL ORDER BY CreatedAt LIMIT @b FOR UPDATE SKIP LOCKED` — `SKIP LOCKED` permite workers concorrentes sem bloqueio.
+PostgreSQL: `SELECT ... WHERE ProcessedAt IS NULL ORDER BY CreatedAt LIMIT @b FOR UPDATE SKIP LOCKED`.
 
 === Firebird
 
@@ -98,7 +89,7 @@ Destaque PG: `SELECT * FROM Outbox WHERE ProcessedAt IS NULL ORDER BY CreatedAt 
 include::example$Outbox/FirebirdOutboxStore.cs[]
 ----
 
-Firebird: `SELECT FIRST @b * FROM OUTBOX WHERE PROCESSED_AT IS NULL` — `FbConnection/FbTransaction`, sem `SKIP LOCKED`.
+Firebird: `SELECT FIRST @b * FROM OUTBOX WHERE PROCESSED_AT IS NULL`.
 
 === dbf (VFP)
 
@@ -107,50 +98,36 @@ Firebird: `SELECT FIRST @b * FROM OUTBOX WHERE PROCESSED_AT IS NULL` — `FbConn
 include::example$Outbox/DbfOutboxStore.cs[]
 ----
 
-dbf: `PROVIDER=VFPOLEDB` + `SELECT TOP @b * FROM outbox.dbf WHERE ProcessedAt IS NULL` — `OleDbConnection`, sem transação.
+dbf: `PROVIDER=VFPOLEDB` + `SELECT TOP @b * FROM outbox.dbf WHERE ProcessedAt IS NULL`.
 
-== Registro Spring Security pattern
+== Registro
 
 [source,csharp]
 ----
-services.AddSingleton<IOutboxStore, NpgsqlOutboxStore>(); // ou FirebirdOutboxStore ou DbfOutboxStore
+services.AddSingleton<IOutboxStore, NpgsqlOutboxStore>(); // ou Firebird/Dbf
 services.AddHostedService<OutboxProcessor>();
 
-// Uso transacional — atomicidade sem loss (Commit ok Publish fail → retry poll 2s)
+// Uso transacional — atomicidade sem loss
 await using var uow = new UnitOfWork(factory);
 await uow.BeginAsync();
 await conn.ExecuteAsync("INSERT INTO Pedidos ...", pedido, uow.Transaction);
 await outbox.SaveEventAsync(new PedidoCriadoEvent{ PedidoId = pedido.Id }, uow.Transaction);
-await uow.CommitAsync(); // atômico → poll 2s → bus.Publish → MarkProcessed
+await uow.CommitAsync(); // poll 2s → Publish → MarkProcessed
 ----
 
 [source,csharp]
 ----
-public static class OutboxExtensions
-{
-    public static Task SaveEventAsync<T>(this IOutboxStore store, T evt, IDbTransaction? tx = null, CancellationToken ct = default)
-        where T : class
-    {
-        var payload = System.Text.Json.JsonSerializer.Serialize(evt);
-        var msg = new OutboxMessage(Guid.NewGuid(), typeof(T).Name, payload, DateTime.UtcNow);
-        return store.SaveAsync(msg, tx, ct);
-    }
+public static class OutboxExtensions {
+  public static Task SaveEventAsync<T>(this IOutboxStore store, T evt, IDbTransaction? tx = null, CancellationToken ct = default)
+    where T : class {
+    var payload = System.Text.Json.JsonSerializer.Serialize(evt);
+    var msg = new OutboxMessage(Guid.NewGuid(), typeof(T).Name, payload, DateTime.UtcNow);
+    return store.SaveAsync(msg, tx, ct);
+  }
 }
 ----
 
-== Quando usar qual
-
-[cols="1,1,2"]
-|===
-| Cenário | Escolha | Por quê
-
-| PG moderno | `NpgsqlOutboxStore` + `UnitOfWork` | `SKIP LOCKED` + transação
-| Firebird legado | `FirebirdOutboxStore` | `FIRST` + `FbTransaction`
-| VFP .dbf | `DbfOutboxStore` | `OleDb` file, sem `FOR UPDATE`
-| Teste | `InMemoryOutboxStore` (tests only) | isolado, não pack
-|===
-
 == Ver também
 
-* xref:eventbus.adoc[EventBus] — `Publish`/`PublishAsync` + `Priority`
-* xref:migrations.adoc[Migrations] — `__migrations` histórico separado
+*   xref:eventbus.adoc[EventBus] — `Publish`/`PublishAsync`
+*   xref:migrations.adoc[Migrations] — histórico separado

@@ -2,9 +2,9 @@
 include::partial$_attributes.adoc[]
 :icons: font
 
-Migrations agnósticas a banco — o app fornece `IDbConnectionFactory` e implementa o journal via Dapper. O histórico usa `CHAR(1)` com `CHECK (success IN ('Y','N'))`, compatível com PostgreSQL, SQL Server, Firebird e dbf.
+Migrations agnósticas a banco — `AddMigrations(Assembly)` com `*.sql` como `EmbeddedResource`, SQL-97 puro. Histórico usa `CHAR(1) Y/N` compatível com PostgreSQL, SQL Server, Firebird e dbf.
 
-== DDL agnóstico
+== DDL
 
 [source,sql]
 ----
@@ -12,50 +12,70 @@ Migrations agnósticas a banco — o app fornece `IDbConnectionFactory` e implem
 CREATE TABLE __migrations (
   version      VARCHAR(50)  NOT NULL PRIMARY KEY,
   script_name  VARCHAR(200) NOT NULL,
-  checksum     VARCHAR(64)  NOT NULL, -- SHA256 64 hex
+  checksum     VARCHAR(64)  NOT NULL,
   installed_on TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
   execution_time_ms BIGINT NOT NULL DEFAULT 0,
   success      CHAR(1)      NOT NULL CHECK (success IN ('Y','N')),
   error_message VARCHAR(4000),
-  type         VARCHAR(20)  NOT NULL -- VERSIONED / REPEATABLE / BASELINE
+  type         VARCHAR(20)  NOT NULL
 );
--- Índices: SELECT * WHERE success='Y' / 'N' bloqueia / DELETE WHERE success='N' repair
 ----
 
-`PG: CHAR(1)` + `MSSQL: CHAR(1)` + `FB: CHAR(1)` + `dbf: C(1)` — mesmo DDL, 0 dialect no `src/`.
+== Uso recomendado — AddMigrations
+
+[source,csharp]
+----
+// Program.cs — EmbeddedResource é o padrão
+builder.Services.AddMigrations(o => {
+  o.EmbeddedAssembly = typeof(Program).Assembly; // busca *.sql no assembly
+  o.EmbeddedPrefix = "MeuProjeto.Migrations";    // opcional — filtra prefixo
+  // ou o.FileSystemFolder = "Migrations"; // alternativa FileSystem
+  o.ValidateOnMigrate = true;  // checksum drift → throw
+  o.RepairOnMigrate = false;   // DELETE WHERE success='N' antes
+  o.BaselineOnMigrate = false; o.BaselineVersion = "0";
+  o.AutoMigrate = true;        // HostedService roda Migrate no startup
+});
+// Override — registra antes ou depois, o custom vence:
+builder.Services.AddSingleton<IMigrationJournal, MeuJournalCustom>();
+builder.Services.AddSingleton<IMigrationScriptProvider, MeuProvider>();
+----
+
+HostedService faz `EnsureHistoryTable → (Repair?) → (Baseline?) → Validate? → Migrate` automático. Para controle manual:
+
+[source,csharp]
+----
+var runner = app.Services.GetRequiredService<IMigrationRunner>();
+await runner.MigrateAsync();
+var dry = await runner.GenerateScriptAsync(); // dry-run DBA revisa
+----
 
 == SPI
 
 [source,csharp]
 ----
-public interface IMigrationJournal
-{
-    Task EnsureHistoryTableAsync(CancellationToken ct = default);
-    Task<IReadOnlyList<string>> GetAppliedVersionsAsync(CancellationToken ct = default);
-    Task<string?> GetChecksumAsync(string version, CancellationToken ct = default);
-    Task<bool> HasAppliedAsync(string version, CancellationToken ct = default);
-    Task MarkAppliedAsync(MigrationInfo m, string checksum, long ms, string successYN, string? error, CancellationToken ct = default);
-    Task<IReadOnlyList<MigrationStatus>> GetInfoAsync(CancellationToken ct = default);
-    Task RepairAsync(CancellationToken ct = default); // DELETE WHERE success='N'
-    Task BaselineAsync(string version = "0", CancellationToken ct = default);
-    Task<IReadOnlyList<string>> GetFailedVersionsAsync(CancellationToken ct = default);
+public interface IMigrationJournal {
+  Task EnsureHistoryTableAsync(CancellationToken ct = default);
+  Task<IReadOnlyList<string>> GetAppliedVersionsAsync(CancellationToken ct = default);
+  Task<string?> GetChecksumAsync(string version, CancellationToken ct = default);
+  Task<bool> HasAppliedAsync(string version, CancellationToken ct = default);
+  Task MarkAppliedAsync(MigrationInfo m, string checksum, long ms, string successYN, string? error, CancellationToken ct = default);
+  Task<IReadOnlyList<MigrationStatus>> GetInfoAsync(CancellationToken ct = default);
+  Task RepairAsync(CancellationToken ct = default);
+  Task BaselineAsync(string version = "0", CancellationToken ct = default);
+  Task<IReadOnlyList<string>> GetFailedVersionsAsync(CancellationToken ct = default);
 }
 
-public interface IMigrationScriptProvider
-{
-    IAsyncEnumerable<MigrationInfo> GetScriptsAsync(CancellationToken ct = default);
-    // FileSystem: new FileSystemMigrationScriptProvider("Migrations")
-    // EmbeddedResource: new EmbeddedResourceMigrationScriptProvider(assembly, "MyApp.Migrations")
+public interface IMigrationScriptProvider {
+  IAsyncEnumerable<MigrationInfo> GetScriptsAsync(CancellationToken ct = default);
 }
 
-public interface IMigrationRunner
-{
-    Task<MigrationResult> MigrateAsync(CancellationToken ct = default);
-    Task ValidateAsync(CancellationToken ct = default); // drift checksum
-    Task<IReadOnlyList<MigrationStatus>> InfoAsync(CancellationToken ct = default);
-    Task RepairAsync(CancellationToken ct = default);
-    Task BaselineAsync(string v = "0", CancellationToken ct = default);
-    Task<string> GenerateScriptAsync(CancellationToken ct = default); // dry-run DBA
+public interface IMigrationRunner {
+  Task<MigrationResult> MigrateAsync(CancellationToken ct = default);
+  Task ValidateAsync(CancellationToken ct = default);
+  Task<IReadOnlyList<MigrationStatus>> InfoAsync(CancellationToken ct = default);
+  Task RepairAsync(CancellationToken ct = default);
+  Task BaselineAsync(string v = "0", CancellationToken ct = default);
+  Task<string> GenerateScriptAsync(CancellationToken ct = default);
 }
 
 public sealed record MigrationInfo(string Version, string ScriptName, string Sql, string Checksum, string Type);
@@ -66,43 +86,13 @@ public sealed record MigrationInfo(string Version, string ScriptName, string Sql
 [source,csharp]
 ----
 MigrationVersionParser.TryParse("V1__create.sql", out var m);     // Version=1, Type=VERSIONED
-MigrationVersionParser.TryParse("V1_0_1__fix.sql", out var m);    // Version=1.0.1, _→., Type=VERSIONED
+MigrationVersionParser.TryParse("V1_0_1__fix.sql", out var m);    // Version=1.0.1, _→.
 MigrationVersionParser.TryParse("R__views.sql", out var r);       // Type=REPEATABLE, checksum diff → reexecuta
 MigrationVersionParser.TryParse("R001__seed.sql", out var r);     // Type=REPEATABLE
 MigrationVersionParser.TryParse("001__baseline.sql", out var b);  // Type=BASELINE
-// sem GeneratedRegex — IndexOf "__"
 ----
 
-== Uso recomendado — AddMigrations (1-liner)
-
-[source,csharp]
-----
-// Program.cs — EmbeddedResource é o padrão (Migrations/*.sql como EmbeddedResource)
-builder.Services.AddMigrations(o => {
-  o.EmbeddedAssembly = typeof(Program).Assembly; // busca *.sql no assembly
-  o.EmbeddedPrefix = "MeuProjeto.Migrations";    // opcional — filtra prefixo
-  // ou o.FileSystemFolder = "Migrations"; // alternativa FileSystem
-  o.ValidateOnMigrate = true;  // checksum drift → throw (default true)
-  o.RepairOnMigrate = false;   // DELETE WHERE success='N' antes (default false)
-  o.BaselineOnMigrate = false; o.BaselineVersion = "0";
-  o.AutoMigrate = true;        // HostedService roda Migrate no startup (default true)
-});
-// Override Spring Security like — registre antes ou depois, TryAdd respeita:
-builder.Services.AddSingleton<IMigrationJournal, MeuJournalCustom>(); // SQL-97 default é DefaultMigrationJournal
-builder.Services.AddSingleton<IMigrationScriptProvider, MeuProvider>(); 
-----
-
-HostedService faz `EnsureHistoryTable → (Repair?) → (Baseline?) → Validate? → Migrate → GenerateScript` automático. Para controle manual:
-
-[source,csharp]
-----
-var runner = app.Services.GetRequiredService<IMigrationRunner>();
-await runner.MigrateAsync();
-var dry = await runner.GenerateScriptAsync(); // dry-run DBA revisa
-----
-
-* Checksum `MigrationChecksum.Compute(sql)` SHA256 64 hex — drift fail-fast `MigrationException`.
-* `ExecuteRawSql` via `IDbCommand` puro (`factory.CreateConnection().CreateCommand()`) — SQL puro, sem Replace, sem `Npgsql`/`OleDb` no `src/`.
+== Runner
 
 [source,mermaid]
 ----
@@ -115,24 +105,26 @@ flowchart LR
   Repeat -->|same| Skip["skip"]
   Loop --> Applied{"applied?"}
   Applied -->|no| Exec2["ExecuteRawSql"] --> JournalY2["MarkApplied Y"]
-  Exec -->|catch| JournalN["MarkApplied N throw MigrationException"]
+  Exec -->|catch| JournalN["MarkApplied N throw"]
 ----
+
+*   Checksum `MigrationChecksum.Compute(sql)` SHA256 64 hex — drift gera `MigrationException`.
+*   `ExecuteRawSql` via `IDbCommand` puro — SQL puro, sem `Npgsql` no `src/`.
 
 == TypeHandler Y/N
 
 [source,csharp]
 ----
-SqlMapper.AddTypeHandler(new BoolCharYNTypeHandler()); // bool ↔ 'Y'/'N' Dapper
-public class BoolCharYNTypeHandler : SqlMapper.TypeHandler<bool>
-{
-    public override bool Parse(object value) => value?.ToString() == "Y";
-    public override void SetValue(IDbDataParameter p, bool v) { p.DbType = DbType.AnsiStringFixedLength; p.Size = 1; p.Value = v ? "Y" : "N"; }
+SqlMapper.AddTypeHandler(new BoolCharYNTypeHandler()); // bool ↔ 'Y'/'N'
+public class BoolCharYNTypeHandler : SqlMapper.TypeHandler<bool> {
+  public override bool Parse(object value) => value?.ToString() == "Y";
+  public override void SetValue(IDbDataParameter p, bool v) { p.DbType = DbType.AnsiStringFixedLength; p.Size = 1; p.Value = v ? "Y" : "N"; }
 }
 ----
 
 == Transações DDL
 
-Transações DDL agnósticas não são suportadas — `MigrationOptions.UseTransaction = true` lança `NotSupportedException`. Para atomicidade quando o banco permite (ex. PostgreSQL), controle a transação no próprio `.sql`:
+Transações DDL agnósticas não são suportadas — `MigrationOptions.UseTransaction = true` lança `NotSupportedException`. Para atomicidade quando o banco permite (ex. PostgreSQL), controle no `.sql`:
 
 [source,sql]
 ----
@@ -150,18 +142,18 @@ var runner = new MigrationRunner(journal, new FileSystemMigrationScriptProvider(
 var runnerTx = new MigrationRunner(journal, scripts, factory, new MigrationOptions{ UseTransaction = true });
 ----
 
-== Cli
+== CLI
 
 [source,bash]
 ----
 dotnet run -- migrate            # MigrateAsync
 dotnet run -- migrate:validate   # ValidateAsync
 dotnet run -- migrate:repair     # RepairAsync
-dotnet run -- migrate:generate   # dry-run → stdout revisa DBA
+dotnet run -- migrate:generate   # dry-run
 dotnet run -- migrate:baseline 0 # BaselineAsync
 ----
 
 == Ver também
 
-* xref:sql-template.adoc[SqlTemplate] — `GenerateScriptAsync` dry-run DBA
-* `docs/examples/Migrations/DDL/__migrations.sql` — DDL completo
+*   xref:data-sqltemplate.adoc[SqlTemplate] — `GenerateScriptAsync` dry-run
+*   `docs/examples/Migrations/DDL/__migrations.sql` — DDL completo

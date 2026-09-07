@@ -1,8 +1,8 @@
-= Observabilidade — OTel + Health + Perf
+= Observabilidade
 include::partial$_attributes.adoc[]
 :icons: font
 
-Diagnostics `FootingActivitySource` (OTel nativo) + Health `FootingHealthCheck` — custo zero sem listener (`HasListeners` guard).
+Diagnostics `FootingActivitySource` + Health `FootingHealthCheck` — custo zero sem listener.
 
 == Diagnostics — ActivitySource
 
@@ -15,7 +15,7 @@ using var a2 = FootingActivitySource.StartEventBusPublish("UserCreatedEvent");
 using var a3 = FootingActivitySource.StartSqlBatch("Users", 100);
 using var a4 = FootingActivitySource.StartMigration("V1__create.sql");
 
-// ActivitySource("Footing.Framework", "3.4.2") — 0 overhead sem listener
+// ActivitySource("Footing.Framework", "1.0") — 0 overhead sem listener
 ----
 
 Configure OTel:
@@ -23,10 +23,10 @@ Configure OTel:
 [source,csharp]
 ----
 services.AddOpenTelemetry()
-    .WithTracing(b => b
-        .AddSource("Footing.Framework")
-        .AddAspNetCoreInstrumentation()
-        .AddOtlpExporter(o => o.Endpoint = new Uri("http://otel-collector:4317")));
+  .WithTracing(b => b
+    .AddSource("Footing.Framework")
+    .AddAspNetCoreInstrumentation()
+    .AddOtlpExporter(o => o.Endpoint = new Uri("http://otel-collector:4317")));
 
 // Visualize no Grafana/Jaeger — tags: db.statement, event.type, batch.size
 ----
@@ -34,7 +34,7 @@ services.AddOpenTelemetry()
 [source,mermaid]
 ----
 flowchart LR
-  Render["SqlTemplate.Render"] --> Act1["Activity SqlTemplateRender<br/>0 cost if no listener"]
+  Render["SqlTemplate.Render"] --> Act1["Activity SqlTemplateRender"]
   Publish["EventBus.Publish"] --> Act2["EventBusPublish"]
   Batch["SqlBatch.InsertBatchAsync"] --> Act3["SqlBatch batch size"]
   Act1 --> OTel["OpenTelemetry Collector"]
@@ -51,30 +51,24 @@ services.AddFootingHealthChecks(); // registra DbHealthCheck + EventBusHealthChe
 app.MapHealthChecks("/health");
 
 // GET /health → {"status":"Healthy","results":{"db":"Healthy","eventbus":"Healthy"}}
-// GET /health?tags=db  → só db
 ----
 
 Implementação:
 
 [source,csharp]
 ----
-public sealed class DbHealthCheck(IDbConnectionFactory f) : IHealthCheck
-{
-    public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext ctx, CancellationToken ct = default)
-    {
-        using var conn = f.CreateConnection();
-        await ((System.Data.Common.DbConnection)conn).OpenAsync(ct);
-        return HealthCheckResult.Healthy("db reachable");
-    }
+public sealed class DbHealthCheck(IDbConnectionFactory f) : IHealthCheck {
+  public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext ctx, CancellationToken ct = default) {
+    using var conn = f.CreateConnection();
+    await ((System.Data.Common.DbConnection)conn).OpenAsync(ct);
+    return HealthCheckResult.Healthy("db reachable");
+  }
 }
-public sealed class EventBusHealthCheck(EventBus bus) : IHealthCheck
-{
-    public Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext ctx, CancellationToken ct = default)
-        => Task.FromResult(bus.IsRunning ? HealthCheckResult.Healthy("eventbus running") : HealthCheckResult.Unhealthy("eventbus stopped"));
+public sealed class EventBusHealthCheck(EventBus bus) : IHealthCheck {
+  public Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext ctx, CancellationToken ct = default)
+    => Task.FromResult(bus.IsRunning ? HealthCheckResult.Healthy("eventbus running") : HealthCheckResult.Unhealthy("eventbus stopped"));
 }
 ----
-
-Resiliência — `tests` exaustivos `18 testes M1-M6` + `sqlite:memory` + `FileSystem` check falham healthy sem falso positivo.
 
 == Performance
 
@@ -82,12 +76,11 @@ Smoke tests validam `<2000ms` para `10k` renders:
 
 [source,csharp]
 ----
-[Fact] public void SqlTemplate_10k_under_2s()
-{
-    var tpl = SqlTemplate.Parse("SELECT * FROM Users {WHERE} {IF:Name} AND Name=@Name {END} {ENDWHERE}");
-    var sw = Stopwatch.StartNew();
-    for(int i=0;i<10_000;i++) tpl.Render(new { Name="eder" });
-    Assert.True(sw.ElapsedMilliseconds < 2000);
+[Fact] public void SqlTemplate_10k_under_2s() {
+  var tpl = SqlTemplate.Parse("SELECT * FROM Users {WHERE} {IF:Name} AND Name=@Name {END} {ENDWHERE}");
+  var sw = Stopwatch.StartNew();
+  for(int i=0;i<10_000;i++) tpl.Render(new { Name="eder" });
+  Assert.True(sw.ElapsedMilliseconds < 2000);
 }
 ----
 
@@ -102,10 +95,9 @@ Para métricas formais, use `BenchmarkDotNet` (opcional):
 
 [source,csharp]
 ----
-[MemoryDiagnoser] [SimpleJob] public class FootingBenchmarks
-{
-    private readonly SqlTemplate _tpl = SqlTemplate.Parse("SELECT * FROM Users {WHERE} {IF:Name} AND Name=@Name {END} {ENDWHERE}");
-    [Benchmark] public SqlResult Template() => _tpl.Render(new { Name="eder" });
+[MemoryDiagnoser] [SimpleJob] public class FootingBenchmarks {
+  private readonly SqlTemplate _tpl = SqlTemplate.Parse("SELECT * FROM Users {WHERE} {IF:Name} AND Name=@Name {END} {ENDWHERE}");
+  [Benchmark] public SqlResult Template() => _tpl.Render(new { Name="eder" });
 }
 // dotnet run -c Release --project tests/Footing.Framework.Benchmarks
 ----
@@ -114,8 +106,8 @@ Para métricas formais, use `BenchmarkDotNet` (opcional):
 
 Transações DDL agnósticas não são suportadas — `UseTransaction = true` lança `NotSupportedException`. Para atomicidade, use `BEGIN/COMMIT` no `.sql` quando o banco permite (ex. PostgreSQL). Ver xref:migrations.adoc#_transacoes_ddl[Migrations — Transações].
 
-== Checklist OTel/Health
+== Checklist
 
-* `AddOpenTelemetry().AddSource("Footing.Framework")` antes de `AddEventBus()` — senão perde trace `Publish`
-* `MapHealthChecks("/health")` com `AllowCachingResponses=false` para K8s liveness probe
-* Tags: `db.system`, `event.type`, `batch.size`, `migration.version` — filtre no Grafana
+*   `AddOpenTelemetry().AddSource("Footing.Framework")` antes de `AddEventBus()`
+*   `MapHealthChecks("/health")` com `AllowCachingResponses=false` para K8s liveness probe
+*   Tags: `db.system`, `event.type`, `batch.size`, `migration.version`

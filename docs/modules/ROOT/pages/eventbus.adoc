@@ -1,99 +1,81 @@
-= EventBus — Channel bounded in-process
+= EventBus
 include::partial$_attributes.adoc[]
 :icons: font
 
-Barramento in-process com handlers assíncronos, priorização e resolução por hierarquia de tipos. `Channel<object> bounded 1000 by default`, `FullMode.Wait` backpressure, workers paralelos sem `Task.Delay` busy-loop, drenagem `Writer.Complete + WhenAll` no `StopAsync`.
+Barramento in-process com `Channel<T>` bounded, workers paralelos e priorização. Para desacoplar módulos sem broker externo.
 
-== Registro via DI
+== Conceito
+
+*   `Publish` enfileira em `Channel` bounded (`FullMode.Wait` por padrão) — backpressure em `PublishAsync`
+*   Workers drenam via `ReadAllAsync` sem `Task.Delay` — `StopAsync` faz `Writer.Complete + WhenAll`
+*   Handlers resolvem por hierarquia — handler de `IEvent` recebe `UserCreatedEvent : IEvent`
+*   Prioridade maior executa primeiro, mesmo nível em paralelo via `Task.WhenAll`
+
+== Registro
 
 [source,csharp]
 ----
 services.AddEventBus(); // 4 workers, capacity 1000, FullMode.Wait, DrainOnStop true
 
-services.AddEventBus(o =>
-{
-    o.WorkerCount = 4;
-    o.Capacity = 1000;
-    o.FullMode = BoundedChannelFullMode.Wait; // Wait, DropNewest, DropOldest, DropWrite
-    o.DrainOnStop = true;
-    o.AutoRegisterHandlers = true; // registra IEventHandler<T> + [EventListener] via Walk
+services.AddEventBus(o => {
+  o.WorkerCount = 4;
+  o.Capacity = 1000;
+  o.FullMode = BoundedChannelFullMode.Wait; // Wait | DropNewest | DropOldest | DropWrite
+  o.DrainOnStop = true;
+  o.AutoRegisterHandlers = true;
 });
-
-services.AddDependencyWalk("MeuProjeto", config, typeof(Program).Assembly); // descobre handlers
+services.AddDependencyWalk("MeuProjeto", config, typeof(Program).Assembly);
 ----
 
-== Handlers por Atributo [EventListener]
+== Handlers
 
 [source,csharp]
 ----
-public class UserCreatedHandler
-{
-    [EventListener(Priority = 10)]
-    public async Task OnUserCreated(UserCreatedEvent evt)
-    {
-        // lógica
-    }
+// Atributo — qualquer método público com 1 parâmetro
+public class UserCreatedHandler {
+  [EventListener(Priority = 10)]
+  public async Task OnUserCreated(UserCreatedEvent evt) { /* ... */ }
 
-    [EventListener] // Priority 0
-    public void OnUserCreatedSync(UserCreatedEvent evt) { }
+  [EventListener] // Priority 0
+  public void OnUserCreatedSync(UserCreatedEvent evt) { }
 }
-----
 
-Método deve ter 1 parâmetro (tipo do evento), retorna `void` ou `Task`.
-
-== Handlers Tipados IEventHandler<T>
-
-[source,csharp]
-----
-public class UserCreatedEventHandler : IEventHandler<UserCreatedEvent>
-{
-    public async Task Handle(UserCreatedEvent evt, CancellationToken ct = default)
-    {
-        // processa
-    }
+// Tipado — auto-descoberta via Walk
+public class UserCreatedEventHandler : IEventHandler<UserCreatedEvent> {
+  public async Task Handle(UserCreatedEvent evt, CancellationToken ct = default) { /* ... */ }
 }
-// auto-descoberta + Transient no DI via Walk
-----
 
-== Subscrição Manual
-
-[source,csharp]
-----
+// Manual
 var bus = provider.GetRequiredService<EventBus>();
 bus.Subscribe<UserCreatedEvent>(async evt => await DoSomething(evt.UserId), priority: 5);
 bus.Subscribe(new UserCreatedEventHandler(), priority: 10);
-
-// herda: handler de IEvent recebe UserCreatedEvent se UserCreatedEvent : IEvent
 ----
+
+Método deve ter 1 parâmetro (tipo do evento), retorna `void` ou `Task`.
 
 == Publicação
 
 [source,csharp]
 ----
-bus.Publish(new UserCreatedEvent { UserId = 123 }); // TryWrite fire-and-forget, warn se cheio
-await bus.PublishAsync(new UserCreatedEvent { UserId = 123 }, ct); // WriteAsync backpressure com ct
-
-// tipado
-await bus.PublishAsync<UserCreatedEvent>(new UserCreatedEvent { UserId = 123 });
+bus.Publish(new UserCreatedEvent { UserId = 123 }); // TryWrite fire-and-forget
+await bus.PublishAsync(new UserCreatedEvent { UserId = 123 }, ct); // WriteAsync com backpressure
 ----
 
 [source,mermaid]
 ----
 sequenceDiagram
   participant P as Publisher
-  participant C as Channel bounded 1000
-  participant W as Workers x4
-  participant H as Handlers Priority 100→0
-  P->>C: Publish / PublishAsync(WriteAsync)
-  C->>W: ReadAllAsync(ct)
-  W->>H: Task.WhenAll(priority group)
+  participant C as Channel
+  participant W as Workers
+  participant H as Handlers
+  P->>C: Publish WriteAsync
+  C->>W: ReadAllAsync
+  W->>H: Task.WhenAll priority group
   H-->>W: Task
-  W-->>C: drain Writer.Complete + WhenAll on StopAsync
+  W-->>C: drain on StopAsync
 ----
 
 == Prioridade
-
-`Priority` maior executa primeiro; mesmo nível executa em paralelo `Task.WhenAll`.
 
 [source,csharp]
 ----
@@ -102,17 +84,13 @@ sequenceDiagram
 [EventListener(Priority = -10)] public void Low(MyEvent e) { }    // por último
 ----
 
-== Resiliência & Testes
+== Resiliência
 
-* `Channel` bounded evita OOM — `FullMode.Wait` provoca backpressure `PublishAsync` em vez de loss.
-* `StopAsync` drena fila — `Writer.TryComplete()` + `await WhenAll(workers)` garante 0 perda.
-* Testes: `EventBusChannelTests` bursts `10k Publish` sem loss + `Capacity=2` backpressure + `StopAsync` drena.
-
-== OTel (próximo)
-
-`FootingActivitySource.StartEventBusPublish("UserCreatedEvent")` — ver xref:otel-health.adoc[OTel & Health].
+*   `Channel` bounded evita OOM — `FullMode.Wait` aplica backpressure em `PublishAsync`
+*   `StopAsync` drena fila — garante 0 perda no shutdown
 
 == Ver também
 
-* xref:di.adoc[DI Walk] — registro automático de handlers
-* xref:outbox-idempotency.adoc[Outbox SPI] — garante entrega mesmo se `Publish` falhar após `Commit`
+*   xref:di-lifecycle.adoc[DI & Lifecycle] — registro automático de handlers
+*   xref:resiliencia-spi.adoc[Resiliência SPI] — Outbox garante entrega após `Commit`
+*   xref:observability.adoc[OTel & Health] — `StartEventBusPublish`
