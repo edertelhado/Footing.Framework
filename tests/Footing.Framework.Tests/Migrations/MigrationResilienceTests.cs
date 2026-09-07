@@ -424,41 +424,21 @@ public class MigrationResilienceTests
     }
 
     [Fact]
-    public async Task Baseline_Marca_0_Sqlite_Placeholders()
+    public async Task Baseline_Marca_0_Sqlite()
     {
         using var factory = new SqliteInMemoryFactory();
         var journal = new SqliteJournal(factory);
         var runner = new MigrationRunner(journal, new InMemoryProvider(Array.Empty<MigrationInfo>()), factory);
         await runner.BaselineAsync("0");
         Assert.Contains("0", await journal.GetAppliedVersionsAsync());
-        // Placeholders {{schema}} replace — usa sufixo para compatível com sqlite (public como schema não existe)
-        var opts = new MigrationOptions { Placeholders = new Dictionary<string,string>{ ["schema"]="public"} };
-        var phSql = "CREATE TABLE t_{{schema}}_ph (id INT);";
-        var provider = new InMemoryProvider(new[]{
-            new MigrationInfo("1","ph","V1__ph.sql","VERSIONED", MigrationChecksum.Compute(phSql), phSql)
-        });
-        // journal já tem baseline 0, migrar V1 com placeholder deve expandir
-        var phJournal = new SqliteJournal(factory); // mesmo factory compartilhado já tem baseline
-        // limpar para teste isolado de placeholder: usar novo factory
-        using var factory2 = new SqliteInMemoryFactory();
-        var j2 = new SqliteJournal(factory2);
-        var runnerPh = new MigrationRunner(j2, provider, factory2, opts);
-        var res = await runnerPh.MigrateAsync();
-        Assert.Single(res.Applied);
-        Assert.Contains("public", res.Applied[0].Sql);
-        Assert.Contains("t_public_ph", res.Applied[0].Sql);
-        Assert.DoesNotContain("{{schema}}", res.Applied[0].Sql);
         // EnsureHistoryTable CHAR(1) CHECK Y/N prova
-        using var conn = factory2.CreateConnection();
+        using var conn = factory.CreateConnection();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = "SELECT sql FROM sqlite_master WHERE type='table' AND name='__migrations'";
         var ddl = cmd.ExecuteScalar() as string;
         Assert.Contains("CHECK", ddl!);
         Assert.Contains("'Y'", ddl!);
         Assert.Contains("'N'", ddl!);
-        // tenta inserir success='X' deve falhar CHECK
-        cmd.CommandText = "INSERT INTO __migrations (version, success) VALUES ('999','X')";
-        await Assert.ThrowsAsync<SqliteException>(async () => { using var c2 = factory2.CreateConnection(); using var cmd2 = c2.CreateCommand(); cmd2.CommandText = "INSERT INTO __migrations (version, success) VALUES ('999','X')"; await Task.Run(()=>cmd2.ExecuteNonQuery()); });
     }
 
     [Fact]

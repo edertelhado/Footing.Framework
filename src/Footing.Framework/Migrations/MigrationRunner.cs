@@ -6,9 +6,10 @@ using Microsoft.Extensions.Logging;
 namespace Footing.Framework.Migrations;
 
 /// <summary>
-/// SQL courier — 60 LOC agnostic. Does not parse SQL, just delivers via IDbCommand.
+/// SQL courier — agnóstico. Entrega SQL puro via IDbCommand (sem parse).
 /// Y/N CHAR(1) for success, VARCHAR(4000) for error_message.
-/// Placeholders via Dictionary Replace, checksum SHA256, blocks if success='N' pending.
+/// Checksum SHA256, bloqueia se success='N' pendente.
+/// SQL puro: schema vem da connection string ou direto no .sql, sem Replace.
 /// </summary>
 public sealed class MigrationRunner : IMigrationRunner
 {
@@ -42,7 +43,7 @@ public sealed class MigrationRunner : IMigrationRunner
             {
                 var existing = await _journal.GetChecksumAsync(script.Version, ct);
                 if (existing != null && existing == script.Checksum) { skipped.Add(script); continue; }
-                var sql = ApplyPlaceholders(script.Sql);
+                var sql = script.Sql;
                 var checksum = MigrationChecksum.Compute(sql);
                 var eSw = Stopwatch.StartNew();
                 try { ExecuteRawSql(sql); eSw.Stop(); await _journal.MarkAppliedAsync(script, checksum, eSw.ElapsedMilliseconds, "Y", null, ct); appliedNow.Add(script with { Checksum = checksum, Sql = sql }); }
@@ -50,7 +51,7 @@ public sealed class MigrationRunner : IMigrationRunner
                 continue;
             }
             if (applied.Contains(script.Version)) { skipped.Add(script); continue; }
-            var sql2 = ApplyPlaceholders(script.Sql);
+            var sql2 = script.Sql;
             var cs2 = MigrationChecksum.Compute(sql2);
             var sw2 = Stopwatch.StartNew();
             try { ExecuteRawSql(sql2); sw2.Stop(); await _journal.MarkAppliedAsync(script, cs2, sw2.ElapsedMilliseconds, "Y", null, ct); appliedNow.Add(script with { Checksum = cs2, Sql = sql2 }); }
@@ -89,17 +90,10 @@ public sealed class MigrationRunner : IMigrationRunner
             }
             else if (applied.Contains(s.Version)) continue;
             sb.AppendLine($"-- {s.ScriptName} [{s.Version}]");
-            sb.AppendLine(ApplyPlaceholders(s.Sql));
+            sb.AppendLine(s.Sql);
             sb.AppendLine(";");
         }
         return sb.ToString();
-    }
-
-    private string ApplyPlaceholders(string sql)
-    {
-        if (_options.Placeholders.Count == 0) return sql;
-        foreach (var kv in _options.Placeholders) sql = sql.Replace($"{{{{{kv.Key}}}}}", kv.Value);
-        return sql;
     }
 
     private void ExecuteRawSql(string sql)

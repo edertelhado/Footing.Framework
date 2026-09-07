@@ -72,7 +72,7 @@ public class MigrationTests
     }
 
     [Fact]
-    public async Task Runner_Migrate_Validate_Repair_Baseline_Placeholders_YN()
+    public async Task Runner_Migrate_Validate_Repair_Baseline_YN()
     {
         var journal = new InMemoryJournal();
         var scripts = new InMemoryProvider(new[]
@@ -81,8 +81,7 @@ public class MigrationTests
             new MigrationInfo("1.0.1", "fix", "V1_0_1__fix.sql", "VERSIONED", MigrationChecksum.Compute("ALTER TABLE users ADD COLUMN email VARCHAR(200)"), "ALTER TABLE users ADD COLUMN email VARCHAR(200)"),
         });
         var factory = new FakeFactory();
-        var opts = new MigrationOptions { Placeholders = new Dictionary<string,string>{ ["schema"]="public"} };
-        var runner = new MigrationRunner(journal, scripts, factory, opts);
+        var runner = new MigrationRunner(journal, scripts, factory);
 
         var result = await runner.MigrateAsync();
         Assert.Equal(2, result.Applied.Count);
@@ -101,16 +100,6 @@ public class MigrationTests
         });
         var runnerDrift = new MigrationRunner(journal, driftScripts, factory);
         await Assert.ThrowsAsync<MigrationException>(() => runnerDrift.ValidateAsync());
-
-        // placeholders
-        var phProvider = new InMemoryProvider(new[]
-        {
-            new MigrationInfo("2", "ph", "V2__ph.sql", "VERSIONED", MigrationChecksum.Compute("CREATE TABLE {{schema}}.t (id INT)"), "CREATE TABLE {{schema}}.t (id INT)"),
-        });
-        var phJournal = new InMemoryJournal();
-        var phRunner = new MigrationRunner(phJournal, phProvider, factory, opts);
-        await phRunner.MigrateAsync();
-        Assert.Single(phJournal.Store, s => s.Value.successYN == "Y");
 
         // blocking if failed pending
         var failJournal = new InMemoryJournal();

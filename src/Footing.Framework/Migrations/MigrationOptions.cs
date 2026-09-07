@@ -3,7 +3,6 @@ namespace Footing.Framework.Migrations;
 public sealed class MigrationOptions
 {
     public string HistoryTable { get; set; } = "__migrations";
-    public Dictionary<string, string> Placeholders { get; set; } = new();
 
     /// <summary>Assembly + prefix para EmbeddedResource. Default: entry assembly, filtrado por .sql.</summary>
     public System.Reflection.Assembly? EmbeddedAssembly { get; set; }

@@ -34,7 +34,6 @@ builder.Services.AddMigrations(o => {
   o.ValidateOnMigrate = true;  // checksum drift → throw
   o.RepairOnMigrate = false;   // DELETE WHERE success='N' se ativado
   o.BaselineOnMigrate = false; o.BaselineVersion = "0";
-  o.Placeholders["schema"] = "public";
 });
 // Override se precisar (Spring Security like): AddSingleton(IMigrationJournal, MeuJournal) antes ou depois
 

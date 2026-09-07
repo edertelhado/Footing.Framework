@@ -82,7 +82,6 @@ builder.Services.AddMigrations(o => {
   o.EmbeddedAssembly = typeof(Program).Assembly; // busca *.sql no assembly
   o.EmbeddedPrefix = "MeuProjeto.Migrations";    // opcional — filtra prefixo
   // ou o.FileSystemFolder = "Migrations"; // alternativa FileSystem
-  o.Placeholders["schema"] = "public";           // pass:[{{schema}}] → public
   o.ValidateOnMigrate = true;  // checksum drift → throw (default true)
   o.RepairOnMigrate = false;   // DELETE WHERE success='N' antes (default false)
   o.BaselineOnMigrate = false; o.BaselineVersion = "0";
@@ -102,9 +101,8 @@ await runner.MigrateAsync();
 var dry = await runner.GenerateScriptAsync(); // dry-run DBA revisa
 ----
 
-* Placeholders `pass:[{{schema}}]` via `Dictionary Replace` — sem regex.
 * Checksum `MigrationChecksum.Compute(sql)` SHA256 64 hex — drift fail-fast `MigrationException`.
-* `ExecuteRawSql` via `IDbCommand` puro (`factory.CreateConnection().CreateCommand()`) — sem `Npgsql`/`OleDb` no `src/`.
+* `ExecuteRawSql` via `IDbCommand` puro (`factory.CreateConnection().CreateCommand()`) — SQL puro, sem Replace, sem `Npgsql`/`OleDb` no `src/`.
 
 [source,mermaid]
 ----
@@ -113,7 +111,7 @@ flowchart LR
   Sort --> Check["GetFailedVersions throw if N pending"]
   Check --> Loop["ForEach script"]
   Loop --> Repeat{"REPEATABLE?"}
-  Repeat -->|yes diff| Exec["ApplyPlaceholders ExecuteRawSql"] --> JournalY["MarkApplied Y"]
+  Repeat -->|yes diff| Exec["ExecuteRawSql"] --> JournalY["MarkApplied Y"]
   Repeat -->|same| Skip["skip"]
   Loop --> Applied{"applied?"}
   Applied -->|no| Exec2["ExecuteRawSql"] --> JournalY2["MarkApplied Y"]
@@ -146,8 +144,7 @@ COMMIT;
 [source,csharp]
 ----
 // Suportado
-var runner = new MigrationRunner(journal, new FileSystemMigrationScriptProvider("Migrations"), factory,
-    new MigrationOptions{ Placeholders = new Dictionary<string,string>{ ["schema"]="public"} });
+var runner = new MigrationRunner(journal, new FileSystemMigrationScriptProvider("Migrations"), factory);
 
 // Não suportado — lança NotSupportedException
 var runnerTx = new MigrationRunner(journal, scripts, factory, new MigrationOptions{ UseTransaction = true });
@@ -166,5 +163,5 @@ dotnet run -- migrate:baseline 0 # BaselineAsync
 
 == Ver também
 
-* xref:sql-template.adoc[SqlTemplate] — `GenerateScriptAsync` usa `ApplyPlaceholders`
+* xref:sql-template.adoc[SqlTemplate] — `GenerateScriptAsync` dry-run DBA
 * `docs/examples/Migrations/DDL/__migrations.sql` — DDL completo

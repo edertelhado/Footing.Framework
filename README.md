@@ -703,7 +703,6 @@ builder.Services.AddMigrations(o => {
   o.EmbeddedAssembly = typeof(Program).Assembly;
   o.EmbeddedPrefix = "MeuProjeto.Migrations";
   // ou o.FileSystemFolder = "Migrations";
-  o.Placeholders["schema"] = "public";
   o.ValidateOnMigrate = true;  // checksum drift → throw
   o.RepairOnMigrate = false;   // DELETE WHERE success='N'
   o.BaselineOnMigrate = false; o.BaselineVersion = "0";
