@@ -90,8 +90,8 @@ curl -X POST http://localhost:5000/users -H "Idempotency-Key: k1" -d '{"name":"e
 
 == Próximos passos
 
-* xref:sql-template.adoc[SqlTemplate 11 tags] — copie `Sql/Users/Search.sql` com `\{WHERE}\{IF}\{IN}\{CHOOSE}`
-* xref:migrations.adoc[Migrations Y/N] — `dotnet run -- migrate` com `__migrations CHAR(1) Y/N`
-* xref:outbox-idempotency.adoc[Outbox SPI] — escolha PG/Firebird/dbf na mesma interface
+* xref:data-sqltemplate.adoc[SqlTemplate 11 tags] — copie `Sql/Users/Search.sql` com `\{WHERE}\{IF}\{IN}\{CHOOSE}`
+* xref:migrations.adoc[Migrations] — `AddMigrations` com `__migrations CHAR(1) Y/N`
+* xref:resiliencia-spi.adoc[Resiliência SPI] — escolha PG/Firebird/dbf na mesma interface
 
-IMPORTANT: `SqlTemplate` exige `.sql` como `EmbeddedResource` — ver xref:sql-template.adoc[SqlTemplate — Setup].
+IMPORTANT: `SqlTemplate` exige `.sql` como `EmbeddedResource` — ver xref:data-sqltemplate.adoc[SqlTemplate — Setup].

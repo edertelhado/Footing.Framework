@@ -637,20 +637,20 @@ public partial class SqlTemplate
     private static bool EvaluateCondition(string expr, Dictionary<string, object?> p)
     {
         expr = expr.Trim();
-        // Won't 3.0 — rejects or/()/! with Warning false (keeps fail-safe omitted)
+        // Unsupported operators — return false with warning (fail-safe omitted)
         if (ContainsOrOutsideQuotes(expr))
         {
-            System.Diagnostics.Debug.WriteLine($"[SqlTemplate Warning] 'or' operator not supported (Won't 3.0) → false. Expr: {expr}");
+            System.Diagnostics.Debug.WriteLine($"[SqlTemplate Warning] 'or' operator not supported → false. Expr: {expr}");
             return false;
         }
         if (ContainsUnsupportedParensOutsideQuotes(expr))
         {
-            System.Diagnostics.Debug.WriteLine($"[SqlTemplate Warning] parentheses '()' not supported (Won't 3.0) → false. Expr: {expr}");
+            System.Diagnostics.Debug.WriteLine($"[SqlTemplate Warning] parentheses '()' not supported → false. Expr: {expr}");
             return false;
         }
         if (ContainsUnsupportedExclamationOutsideQuotes(expr))
         {
-            System.Diagnostics.Debug.WriteLine($"[SqlTemplate Warning] '!' operator not supported (Won't 3.0) → false. Expr: {expr}");
+            System.Diagnostics.Debug.WriteLine($"[SqlTemplate Warning] '!' operator not supported → false. Expr: {expr}");
             return false;
         }
         var andIndices = FindAndIndicesOutsideQuotes(expr);

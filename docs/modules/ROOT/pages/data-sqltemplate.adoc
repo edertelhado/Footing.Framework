@@ -1,0 +1,198 @@
+= SqlTemplate — MyBatis style 11 tags
+include::partial$_attributes.adoc[]
+:icons: font
+:table-caption!:
+
+Combina SQL dinâmico com Dapper, DB-agnóstico. `11 GeneratedRegex` source-gen AOT, pipeline `BIND→INCLUDE→TRIM/SET→WHERE→IFDEFINED→IF(and)→IN→CHOOSE→BETWEEN`.
+
+== Tags suportadas (v3.4.2 — 11 regex)
+
+[cols="1,3,2",options="header"]
+|===
+| Tag | Descrição | Exemplo
+
+| `\{IF: expr} ... \{END}`
+| `expr := Param \| Param Operator Operand \| length(Param) Operator Operand \| defined(Param) \| A and B` — `Operator := ==\|!=\|=\|<>\|>\|<\|>=\|<=\|gt\|lt\|gte\|lte\|ge\|le` (case-insensitive). `and` simples 2.3.0: `1× and` 2 fatores fora de `''/""`, short-circuit. `defined(Param)` → `ContainsKey`.
+| `\{IF:Status == 'ACTIVE'} AND x \{END}` · `\{IF:Busca != null and length(Busca) > 2}`
+
+| `\{IFDEFINED:Param} ... \{END}` / `\{IFNOTDEFINED:Param} ... \{END}`
+| `ContainsKey` distingue `missing` (false) vs `null/"" /Y` (true). `defined()` alias dentro `\{IF:}`.
+| `\{IFDEFINED:Ativo} AND c.Ativo IS NULL \{END}`
+
+| `\{WHERE} ... \{ENDWHERE}`
+| Só adiciona `WHERE` se algo renderizar, remove `AND/OR` líder via `TrimContent`.
+| `\{WHERE} \{IF:Name} AND u.Name=@Name \{END} \{ENDWHERE}`
+
+| `\{IN:Param} ... \{END}`
+| `IEnumerable` não-string com ≥1 item não-nulo.
+| `\{IN:Roles} AND u.Role IN @Roles \{END}`
+
+| `\{CHOOSE} \{WHEN: expr} ... \{ENDWHEN} \{OTHERWISE} ... \{ENDOTHERWISE} \{ENDCHOOSE}`
+| Primeiro `WHEN` true, senão `OTHERWISE`.
+| `\{CHOOSE} \{WHEN: Status=='ACTIVE'} ... \{ENDWHEN} \{ENDCHOOSE}`
+
+| `\{BETWEEN:Param} ... \{END}`
+| Sugar flat `hasMin && hasMax` (`ParamMin/ParamMax`).
+| `\{BETWEEN:CreatedAt} AND x BETWEEN @CreatedAtMin AND @CreatedAtMax \{END}`
+
+| `\{TRIM prefix="..." prefixOverrides="..." suffix="..." suffixOverrides="..."} ... \{ENDTRIM}`
+| MyBatis TRIM. Remove overrides início/fim.
+| `\{TRIM prefix="WHERE" prefixOverrides="AND\|OR "} AND x \{ENDTRIM}` → `WHERE x`
+
+| `\{SET} ... \{ENDSET}`
+| Açúcar `TRIM prefix="SET" suffixOverrides=","`.
+| `\{SET} \{IF:Name != null} Name=@Name, \{END} \{ENDSET}`
+
+| `\{INCLUDE:Fragment}` / `\{SQL:Fragment}`
+| DRY — `RegisterFragment("BaseColumns","u.Id, u.Name")` + `SELECT \{INCLUDE:BaseColumns}`. `ConcurrentDictionary`, depth 5 guard, miss → literal fail-safe.
+| `SELECT \{INCLUDE:BaseColumns} FROM Users`
+
+| `\{BIND:Var, value='%' + Param + '%'}`
+| Injeta `paramDict["Var"]=concat`. Valida `Var ^[A-Za-z_]\w*$`, rejeita `;--/*`.
+| `\{BIND:LikePattern, value='%' + Name + '%'}`
+|===
+
+== 1 query com 11 tags
+
+`Sql/Users/Search.sql` — demonstrando todas as tags em uma query (agnóstico PG/Firebird/dbf):
+
+[source,sql]
+----
+-- EmbeddedResource: Sql/Users/Search.sql
+SELECT {INCLUDE:BaseColumns} FROM Users u
+{BIND:LikePattern, value='%' + Name + '%'}
+{WHERE}
+  {IF:Name != null and length(Name) > 2} AND u.Name LIKE @LikePattern {END}
+  {IF:Email != null} AND u.Email = @Email {END}
+  {IF:Status} AND u.Status = @Status {END}
+  {IN:Roles} AND u.RoleId IN @Roles {END}
+  {CHOOSE} {WHEN: Age >= 18} AND u.Age >= @Age {ENDWHEN} {OTHERWISE} AND u.Age < 18 {ENDOTHERWISE} {ENDCHOOSE}
+  {BETWEEN:CreatedAt} AND u.CreatedAt BETWEEN @CreatedAtMin AND @CreatedAtMax {END}
+  {IFDEFINED:Ativo} AND u.Ativo IS NULL {END}
+  {IF:defined(Ativo) and Ativo == 'Y'} AND u.Ativo='Y' {END}
+{ENDWHERE}
+ORDER BY u.Name
+{TRIM prefix="" suffixOverrides=","} , {ENDTRIM}
+----
+
+Uso:
+
+[source,csharp]
+----
+SqlTemplate.RegisterFragment("BaseColumns", "u.Id, u.Name, u.Email, u.CreatedAt");
+
+var tpl = SqlTemplateLoader.For<UserRepository>("Sql.Users.Search");
+// ou ad-hoc:
+var tpl2 = SqlTemplate.Parse(File.ReadAllText("Sql/Users/Search.sql"));
+
+var r = tpl.Render(new {
+    Name = "eder",
+    Email = "eder@test.com",
+    Status = "ACTIVE",
+    Age = 20,
+    Roles = new[] {1,2,3},
+    CreatedAtMin = new DateTime(2024,1,1),
+    CreatedAtMax = new DateTime(2024,12,31),
+    Ativo = (string?)null
+});
+await conn.QueryAsync<User>(r.Sql, r.Parameters);
+----
+
+== Setup Loader
+
+[source,xml]
+----
+<ItemGroup>
+  <EmbeddedResource Include="Sql\**\*.sql" />
+</ItemGroup>
+----
+
+[source,csharp]
+----
+var template = SqlTemplateLoader.For<UserRepository>("Sql.Users.GetAll");
+var template2 = SqlTemplateLoader.Load("MyApp.Data.Sql.Users.GetAll.sql", typeof(UserRepository).Assembly);
+var all = SqlTemplateLoader.LoadAll(typeof(UserRepository).Assembly);
+SqlTemplateLoader.Invalidate("MyApp.Data.Sql.Users.GetAll.sql");
+SqlTemplateLoader.ClearCache();
+----
+
+Cache `ConcurrentDictionary` thread-safe.
+
+== Fail-fast vs fail-safe
+
+*Fail-fast* (`SqlTemplateParseException : InvalidOperationException`):
+
+[source]
+----
+{IF:Name} ...          // sem {END} → throw S1
+{WHERE} ...            // sem {ENDWHERE} → throw S2
+{CHOOSE} ...           // sem {ENDCHOOSE} → throw S3
+{WHEN: x} ...          // sem {ENDWHEN} → throw S4
+{BETWEEN:CreatedAt} .. // sem {END} → throw S5
+{IF:Name               // sem } → throw S6 Unclosed tag
+{IFDEFINED:Ativo} ...  // sem {END} → throw
+----
+
+Mensagem com `Tag/Expected/Line/Column/Snippet/Suggestion` — igual MyBatis `BuilderException` no startup.
+
+*Fail-safe* (dados resilientes — omitido/false+Warning/placeholder):
+
+[source]
+----
+{IF:Nmae != null} // typo → ContainsKey false → omitido (Warning)
+{IF:"abc" > 100}  // string vs número → false+Warning Debug.WriteLine
+{IN:Roles} com Roles="admin" // string → não é IEnumerable → omitido
+----
+
+== Tri-state null/Y/N
+
+[cols="1,3,1,1,1,1,1",options="header"]
+|===
+| # | Template | `missing` `new{}` | `null` | `""` | `"Y"` | `"N"`
+
+| T1 traz-todos
+| `\{WHERE} \{IF:Ativo} AND c.Ativo=@Ativo \{END} \{ENDWHERE}`
+| traz todos
+| traz todos
+| traz todos
+| filtra Y
+| filtra N
+|===
+
+Para `IS NULL` use `\{IF:Ativo == null}` ou `IFDEFINED`:
+
+[source,sql]
+----
+{WHERE}
+  {IF:Ativo} AND c.Ativo = @Ativo {END}
+  {IF:BuscarNulos == true} AND c.Ativo IS NULL {END}
+{ENDWHERE}
+----
+
+4 estados com 2 params (docs snippet, sem código):
+
+[source,csharp]
+----
+tpl.Render(new { Ativo=(string?)null, BuscarNulos=false }); // todos
+tpl.Render(new { Ativo=(string?)null, BuscarNulos=true });  // IS NULL
+tpl.Render(new { Ativo="Y" });                               // Y
+tpl.Render(new { Ativo="" }); // "" → traz todos (shorthand falsy)
+----
+
+== `and` / `length()` / `IFDEFINED`
+
+[source,sql]
+----
+{IF:Busca != null and Busca != ''} AND x LIKE @Busca {END}  -- 1× and ok
+{IF:length(Name) > 18} AND Name=@Name {END}                    -- 2.1 opt-in
+{IF:defined(Ativo) and Ativo=='Y'} AND Ativo='Y' {END}       -- 2.4 compat
+ {IF:Busca != null and Busca != '' and Extra != null}         -- não suportado → false
+ {IF:Status == 'A' or Status == 'B'}                           -- não suportado → false
+----
+
+Suporte a `or`, `and` com 3+ fatores, `()` e `!` não está no escopo — use blocos aninhados ou sequenciais.
+
+== Ver também
+
+* xref:sql-batch.adoc[SqlBatch] — `INSERT VALUES` chunked
+* xref:migrations.adoc[Migrations Y/N] — `GenerateScriptAsync` dry-run

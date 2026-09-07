@@ -1,7 +1,7 @@
 = Recipe — Paging (dialect no .sql, não no framework)
 include::partial$_attributes.adoc[]
 
-`PagedResult<T>` Won't (GLOBAL_RULES) — precisa dialect `LIMIT vs TOP/FETCH vs FIRST SKIP`. App faz `.sql` via `SqlTemplate`.
+`PagedResult<T>` não está no framework — precisa de dialect `LIMIT vs TOP/FETCH vs FIRST SKIP`. App faz `.sql` via `SqlTemplate`.
 
 PostgreSQL:
 

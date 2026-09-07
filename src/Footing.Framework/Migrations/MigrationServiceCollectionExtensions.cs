@@ -21,7 +21,7 @@ public static class MigrationServiceCollectionExtensions
         if (configure != null) services.Configure(configure);
         else services.Configure<MigrationOptions>(_ => { });
 
-        // SPI — TryAdd deixa porta aberta para substituir (ex: NpgsqlJournal custom, FileSystem provider)
+        // TryAdd deixa porta aberta para substituir (ex: NpgsqlJournal custom, FileSystem provider)
         services.TryAddSingleton<IMigrationScriptProvider>(sp =>
         {
             var opts = sp.GetService<Microsoft.Extensions.Options.IOptions<MigrationOptions>>()?.Value ?? new MigrationOptions();

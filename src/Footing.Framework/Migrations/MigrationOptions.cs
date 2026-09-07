@@ -27,8 +27,7 @@ public sealed class MigrationOptions
     private bool _useTransaction;
 
     /// <summary>
-    /// Definitive Won't — agnostic transactional DDL is not supported, even with BUY.
-    /// Keeps AutoTransaction=false agnostic; caller controls BEGIN/COMMIT inside the .sql script if needed (e.g., PostgreSQL).
+    /// Transactional DDL is not supported. Caller controls BEGIN/COMMIT inside the .sql script if needed (e.g., PostgreSQL).
     /// Setter throws NotSupportedException when set to true.
     /// </summary>
     public bool UseTransaction

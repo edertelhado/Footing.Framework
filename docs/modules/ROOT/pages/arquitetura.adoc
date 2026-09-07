@@ -1,0 +1,47 @@
+= Arquitetura
+include::partial$_attributes.adoc[]
+:icons: font
+
+Camadas, fluxo e princípios. Inspirado em Rust crates + Spring Boot auto-configuration.
+
+== Camadas
+
+[source,mermaid]
+----
+flowchart LR
+  Controller --> Service["Service"]
+  Service --> Repo["Repository"]
+  Repo --> Dapper
+  Dapper --> Factory["IDbConnectionFactory"]
+  Factory --> DB[("PG Firebird dbf via SPI")]
+  Service --> EB["EventBus Channel"]
+  EB --> Handler["IEventHandler Priority"]
+  Service --> Batch["SqlBatch chunked"]
+  Migrations["MigrationRunner YN"] --> Factory
+  OTel["ActivitySource"] -.-> EB & Dapper & Batch
+  Health["Health Checks"] -.-> Factory & EB
+----
+
+== Fluxo DI Walk → Lifecycle → Bus
+
+[source,mermaid]
+----
+flowchart TD
+  Scan["Assembly.GetTypes"] --> Filter["Where Has Injectable Service Repository"]
+  Filter --> Lifetime["Map Attribute to Lifetime"]
+  Lifetime --> Register["Add ServiceDescriptor"]
+  Register --> Listeners["RegisterEventListeners"]
+  Register --> Lifecycle["PostConstruct PreDestroy"]
+----
+
+*Princípios:* agnóstico a banco (`0 Npgsql/Firebird/OleDb` no `src/`), SPI `IOutboxStore/IIdempotencyStore/IMigrationJournal`, `<3.5K LOC`, fail-fast de estrutura vs fail-safe de dados.
+
+== Auto-configuration (TryAdd)
+
+Como Spring Boot: `AddMigrations`, `AddEventBus`, `AddFootingHealthChecks` registram defaults via `TryAddSingleton`. Se o app registrar `AddSingleton<IMigrationJournal, MeuJournal>` antes ou depois, o custom vence.
+
+== Ver também
+
+*   xref:di-lifecycle.adoc[DI & Lifecycle]
+*   xref:migrations.adoc[Migrations]
+*   xref:observability.adoc[OTel & Health]

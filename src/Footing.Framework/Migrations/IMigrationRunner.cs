@@ -1,7 +1,7 @@
 namespace Footing.Framework.Migrations;
 
 /// <summary>
-/// SPI runner — carteiro de SQL. Orquestra journal + provider via IDbConnectionFactory.
+/// SPI runner — orquestra journal + provider via IDbConnectionFactory.
 /// </summary>
 public interface IMigrationRunner
 {
