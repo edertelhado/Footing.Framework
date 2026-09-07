@@ -31,16 +31,11 @@ services.AddOpenTelemetry()
 // Visualize no Grafana/Jaeger — tags: db.statement, event.type, batch.size
 ----
 
-[source,mermaid]
+[source,text]
 ----
-flowchart LR
-  Render["SqlTemplate.Render"] --> Act1["Activity SqlTemplateRender"]
-  Publish["EventBus.Publish"] --> Act2["EventBusPublish"]
-  Batch["SqlBatch.InsertBatchAsync"] --> Act3["SqlBatch batch size"]
-  Act1 --> OTel["OpenTelemetry Collector"]
-  Act2 --> OTel
-  Act3 --> OTel
-  OTel --> Grafana["Grafana Jaeger"]
+  SqlTemplate.Render  ──> Activity SqlTemplateRender ──┐
+  EventBus.Publish   ──> Activity EventBusPublish    ──┼──> OTel Collector ──> Grafana / Jaeger
+  SqlBatch           ──> Activity SqlBatch           ──┘
 ----
 
 == Health — /health

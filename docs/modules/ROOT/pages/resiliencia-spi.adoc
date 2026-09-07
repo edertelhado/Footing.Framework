@@ -54,22 +54,31 @@ public sealed class OutboxProcessor(IOutboxStore store, EventBus bus, ILogger<Ou
 }
 ----
 
-[source,mermaid]
+[source,text]
 ----
-sequenceDiagram
-  participant Tx as UnitOfWork Tx
-  participant App as App Service
-  participant Outbox as IOutboxStore
-  participant DB as DB
-  participant Proc as OutboxProcessor
-  participant Bus as EventBus
-  App->>Tx: BeginAsync
-  App->>DB: INSERT INTO Pedidos tx
-  App->>Outbox: SaveEventAsync tx mesma Tx
-  App->>Tx: CommitAsync Pedido+Outbox atômico
-  Proc->>Outbox: GetUnprocessed Batch100
-  Outbox-->>Proc: OutboxMessage
-  Proc->>Bus: Publish
+  App Service                     OutboxProcessor
+       │                               │
+       │  BeginAsync                   │
+       ├──> UnitOfWork Tx              │
+       │                               │
+       │  INSERT INTO Pedidos (tx)     │
+       ├──> DB                         │
+       │                               │
+       │  SaveEventAsync (mesma tx)    │
+       ├──> IOutboxStore               │
+       │                               │
+       │  CommitAsync                  │
+       ├──> Pedido + Outbox atômico    │
+       │                               │
+       │                         GetUnprocessed (batch 100)
+       │                         ├──> IOutboxStore
+       │                         │    OutboxMessage
+       │                         │<──┘
+       │                         Publish
+       │                         ├──> EventBus
+       │                         MarkProcessed
+       │                         ├──> IOutboxStore
+----
   Proc->>Outbox: MarkProcessed
 ----
 

@@ -61,18 +61,21 @@ bus.Publish(new UserCreatedEvent { UserId = 123 }); // TryWrite fire-and-forget
 await bus.PublishAsync(new UserCreatedEvent { UserId = 123 }, ct); // WriteAsync com backpressure
 ----
 
-[source,mermaid]
+[source,text]
 ----
-sequenceDiagram
-  participant P as Publisher
-  participant C as Channel
-  participant W as Workers
-  participant H as Handlers
-  P->>C: Publish WriteAsync
-  C->>W: ReadAllAsync
-  W->>H: Task.WhenAll priority group
-  H-->>W: Task
-  W-->>C: drain on StopAsync
+  Publisher               Channel<T>              Workers              Handlers
+     │                       │                      │                     │
+     │  Publish/WriteAsync   │                      │                     │
+     ├──────────────────────>│                      │                     │
+     │                       │  ReadAllAsync        │                     │
+     │                       ├─────────────────────>│                     │
+     │                       │                      │  Task.WhenAll       │
+     │                       │                      │  (priority group)   │
+     │                       │                      ├────────────────────>│
+     │                       │                      │        Task         │
+     │                       │                      │<────────────────────┤
+     │                       │  drain on StopAsync  │                     │
+     │                       │<─────────────────────┤                     │
 ----
 
 == Prioridade

@@ -13,14 +13,31 @@ services.AddDependencyWalk("MeuProjeto", configuration, typeof(Program).Assembly
 services.AddDependencyWalk("MeuProjeto", configuration, typeof(Program).Assembly, typeof(UserRepository).Assembly);
 ----
 
-[source,mermaid]
+[source,text]
 ----
-flowchart TD
-  Scan["Assembly.GetTypes"] --> Filter["Where Has Injectable Service Repository"]
-  Filter --> Lifetime["Map Attribute to Lifetime"]
-  Lifetime --> Register["Add ServiceDescriptor"]
-  Register --> Listeners["RegisterEventListeners"]
-  Register --> Lifecycle["PostConstruct PreDestroy"]
+  Assembly.GetTypes
+        │
+        ▼
+  ┌─────────────────────────────┐
+  │ Where Has Injectable /      │
+  │ Service / Repository        │
+  └─────────────┬───────────────┘
+                │
+                ▼
+  ┌─────────────────────────────┐
+  │ Map Attribute to Lifetime   │
+  └─────────────┬───────────────┘
+                │
+                ▼
+  ┌─────────────────────────────┐
+  │ Add ServiceDescriptor       │
+  └──────┬──────────────┬───────┘
+         │              │
+         ▼              ▼
+  ┌────────────┐  ┌────────────┐
+  │ Register   │  │ PostConstruct│
+  │ EventListeners│  │ PreDestroy  │
+  └────────────┘  └────────────┘
 ----
 
 == Atributos

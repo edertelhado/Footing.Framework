@@ -3,7 +3,7 @@ include::partial$_attributes.adoc[]
 :icons: font
 :attribute-missing: skip
 
-SQL dinâmico com Dapper, agnóstico a banco. `11 GeneratedRegex` source-gen AOT, pipeline `BIND → INCLUDE → TRIM/SET → WHERE → IFDEFINED → IF(and) → IN → CHOOSE → BETWEEN`. Inspirado MyBatis, mas SQL puro.
+SQL dinâmico com Dapper, agnóstico a banco. Pipeline de tags que resolve condições, loops e inclusões diretamente em arquivos `.sql` — sem ORM, sem `StringBuilder`.
 
 == Tags suportadas
 
@@ -36,7 +36,7 @@ SQL dinâmico com Dapper, agnóstico a banco. `11 GeneratedRegex` source-gen AOT
 | `{BETWEEN:CreatedAt} AND x BETWEEN @CreatedAtMin AND @CreatedAtMax {END}`
 
 | `{TRIM prefix="..." prefixOverrides="..." suffix="..." suffixOverrides="..."} ... {ENDTRIM}`
-| MyBatis TRIM. Remove overrides início/fim.
+| Remove prefixo/sufixo do conteúdo. Útil para limpar `AND`/`OR` soltos.
 | `{TRIM prefix="WHERE" prefixOverrides="AND\|OR "} AND x {ENDTRIM}` → `WHERE x`
 
 | `{SET} ... {ENDSET}`
