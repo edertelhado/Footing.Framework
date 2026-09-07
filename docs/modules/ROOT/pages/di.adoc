@@ -90,20 +90,20 @@ public class EmailService
 
 Suporta `void`, `Task`, `ValueTask` — múltiplos `[PostConstruct]` invalido (`InvalidOperationException`).
 
-== Walk vs Source Generator — decisão Won't
+== Walk vs Source Generator
 
 [cols="1,1,2"]
 |===
-| Critério | Walk reflexivo | SG Roslyn (Won't)
+| Critério | Walk reflexivo | SG Roslyn
 
-| Startup | `~50ms` para 300 types (`<3%` de `~1.5s` boot) | `~5ms` (economia `45ms` irrelevante)
-| Tipos | `<500` monólito | `>500` + SLO `<50ms` + `PublishAot` = gatilho SG
-| Build | 0 analyzer | `Generators 310L + Tests 3 + docs/poc 35K` removível `rm -rf`
-| Custo | `0` | Alto (analyzer + manutenção)
-| Decisão | **Walk definitivo** | Avaliado para futuro se necessário `PublishAot` + milhares de types
+| Startup | `~50ms` para 300 types | `~5ms` (ganho irrelevante para monólito)
+| Tipos | `<500` monólito | `>500` + `PublishAot`
+| Build | Sem analyzer | Com analyzer
+| Custo | Baixo | Alto
+| Decisão | **Walk** | Avaliado para futuro
 |===
 
-POC de SG arquivado em `poc/di-source-generator-archived` para referência.
+POC de SG arquivado em `poc/di-source-generator-archived`.
 
 == Config — InjectConfig
 

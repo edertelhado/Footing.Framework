@@ -69,13 +69,12 @@ SqlBatch.BuildBatchInsert("Users.", users);                      // throw (trail
 SqlBatch.BuildBatchInsert("schema.Users", users);                // ok
 ----
 
-== Performance — Stopwatch Smoke (S4 Could 0.2)
+== Performance
 
-`tests/BenchmarkSmokeTests.cs` 3 testes minimal `<2000ms 10k renders + 10k Batch`:
+Smoke tests validam `<2000ms` para `10k` renders:
 
 [source,csharp]
 ----
-// BenchmarkSmokeTests — sem BenchmarkDotNet (Could), só Stopwatch smoke
 [Fact] public void SqlTemplate_10k_renders_must_be_under_2s()
 {
     var tpl = SqlTemplate.Parse("SELECT * FROM Users {WHERE} {IF:Name} AND Name=@Name {END} {ENDWHERE}");
@@ -83,18 +82,9 @@ SqlBatch.BuildBatchInsert("schema.Users", users);                // ok
     for(int i=0;i<10_000;i++) tpl.Render(new { Name="eder" });
     Assert.True(sw.ElapsedMilliseconds < 2000);
 }
-
-[Fact] public async Task SqlBatch_InsertBatchAsync_UoW_chunked()
-{
-    await using var uow = new UnitOfWork(factory);
-    await uow.BeginAsync();
-    var n = await SqlBatch.InsertBatchAsync(uow, "Users", Enumerable.Range(0,1200).Select(i => new User{ Name=$"u{i}" }));
-    await uow.CommitAsync();
-    Assert.Equal(1200, n);
-}
 ----
 
-Para `BenchmarkDotNet` formal `PrivateAssets` (S4 Could) — opcional se dor perf >30%:
+Para métricas formais, use `BenchmarkDotNet` (opcional):
 
 [source,xml]
 ----
@@ -105,15 +95,12 @@ Para `BenchmarkDotNet` formal `PrivateAssets` (S4 Could) — opcional se dor per
 
 [source,csharp]
 ----
-// tests/Footing.Framework.Benchmarks/Benchmarks.cs — suite opcional
 [MemoryDiagnoser] public class SqlTemplateBenchmarks
 {
     private SqlTemplate _tpl = SqlTemplate.Parse("SELECT * FROM Users {WHERE} {IF:Name} AND Name=@Name {END} {ENDWHERE}");
     [Benchmark] public SqlResult Render() => _tpl.Render(new { Name="eder" });
 }
 ----
-
-NOTE: Suite BenchmarkDotNet permanece `Could Have` — Stopwatch Smoke já prova `<2000ms 10k`.
 
 == Diagrama
 

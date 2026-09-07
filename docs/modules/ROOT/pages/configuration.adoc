@@ -109,17 +109,14 @@ Walk reflexivo é suficiente para monólito. Source Generator avaliado para futu
 
 Samples não estão no escopo do framework — framework é agnóstico e genérico.
 
-== Auditoria @aud_carlos
-
-Gates docs Must 0.3:
+== Auditoria
 
 [source,bash]
 ----
-npx antora antora-playbook.yml # → docs/build/site/index.html + 10 pages.html 0 erro
+npx antora antora-playbook.yml # → docs/build/site/index.html + 10 pages 0 erro
 ls docs/build/site/footing-framework/3.4/*.html | wc -l # 10+ pages
 dotnet test -c Release # 473 Passed
 find src -name "*.cs" ! -path "*/obj/*" | xargs wc -l # <3500
 grep -c GeneratedRegex src/Footing.Framework/Data/SqlTemplate.cs # 11
 dotnet pack -c Release -o /tmp/pack && unzip -p /tmp/pack/*.nupkg *.nuspec | grep -i Npgsql && echo FAIL || echo PASS
 ----
-→ `≥9.0` libera `v3.4.3 docs` ou `v3.5.0` (S1 `UseTransaction` **Won't definitivo** — sem BUY, `throw NotSupportedException` agnóstico — ver `GLOBAL_RULES §1` e `migrations.md §6.3`).

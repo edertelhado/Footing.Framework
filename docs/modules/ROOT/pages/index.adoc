@@ -11,7 +11,7 @@ image:https://img.shields.io/badge/version-{footing-version}-blue[Version {footi
 [cols="1,1"]
 |===
 | Topo-funil (avaliação 10min) | Fundo-funil (template)
-| Leia este portal versionado `v{footing-version}` — quickstart copy-paste, 11 tags em 1 query, SPI tabs PG/Firebird/dbf | `dotnet new` futuro só com gatilho BUY >30% — ver `outbox-idempotency.adoc`
+| Leia este portal versionado `v{footing-version}` — quickstart copy-paste, 11 tags em 1 query, SPI tabs PG/Firebird/dbf | Templates futuros conforme demanda
 |===
 
 == Arquitetura
@@ -47,6 +47,6 @@ flowchart LR
 
 == Versionamento Antora
 
-`antora.yml` `version: 3.4` travado por tag `v3.4.2` — este portal é snapshot `3.4.2`. `v3.5.0` revisado 0.7 SP `UseTransaction Won't definitivo` (DDL transacional agnóstico não suportado, mesmo com BUY — `MSSQL` tolera mas não recomenda, `Firebird/dbf/SQLite` não permitem DDL em transação; `AutoTransaction=false` agnóstico, `BEGIN/COMMIT` no `.sql` se `PG`; `throw NotSupportedException` descritivo — ver xref:migrations.adoc[migrations] e `GLOBAL_RULES §1`).
+`antora.yml` `version: 3.5` — ver xref:migrations.adoc[Migrations] para histórico.
 
 NOTE: Framework é genérico, sem domínio — não contém `Aluno/Matrícula` nem `samples/` compilável. Tudo via SPI.

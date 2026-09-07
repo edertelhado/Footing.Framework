@@ -2,7 +2,7 @@
 include::partial$_attributes.adoc[]
 :icons: font
 
-Diagnostics `FootingActivitySource` (OTel nativo `6 LOC`, 0 deps) + Health `FootingHealthCheck` (5 LOC, `HealthChecks.Abstractions`) — custo 0 sem listener (`HasListeners` guard).
+Diagnostics `FootingActivitySource` (OTel nativo) + Health `FootingHealthCheck` — custo zero sem listener (`HasListeners` guard).
 
 == Diagnostics — ActivitySource
 
@@ -54,7 +54,7 @@ app.MapHealthChecks("/health");
 // GET /health?tags=db  → só db
 ----
 
-Implementação (5 LOC):
+Implementação:
 
 [source,csharp]
 ----
@@ -76,9 +76,9 @@ public sealed class EventBusHealthCheck(EventBus bus) : IHealthCheck
 
 Resiliência — `tests` exaustivos `18 testes M1-M6` + `sqlite:memory` + `FileSystem` check falham healthy sem falso positivo.
 
-== Perf — S4 Could 0.2 (Stopwatch Smoke done)
+== Performance
 
-`BenchmarkSmokeTests` minimal já valida `<2000ms 10k renders`:
+Smoke tests validam `<2000ms` para `10k` renders:
 
 [source,csharp]
 ----
@@ -87,19 +87,17 @@ Resiliência — `tests` exaustivos `18 testes M1-M6` + `sqlite:memory` + `FileS
     var tpl = SqlTemplate.Parse("SELECT * FROM Users {WHERE} {IF:Name} AND Name=@Name {END} {ENDWHERE}");
     var sw = Stopwatch.StartNew();
     for(int i=0;i<10_000;i++) tpl.Render(new { Name="eder" });
-    Assert.True(sw.ElapsedMilliseconds < 2000, $"{sw.ElapsedMilliseconds}ms >2000");
+    Assert.True(sw.ElapsedMilliseconds < 2000);
 }
 ----
 
-Para métrica formal `BenchmarkDotNet` (Could, `PrivateAssets`):
+Para métricas formais, use `BenchmarkDotNet` (opcional):
 
 [source,xml]
 ----
-<Project>
-  <ItemGroup>
-    <PackageReference Include="BenchmarkDotNet" Version="0.14.0" PrivateAssets="All" />
-  </ItemGroup>
-</Project>
+<ItemGroup>
+  <PackageReference Include="BenchmarkDotNet" Version="0.14.0" PrivateAssets="All" />
+</ItemGroup>
 ----
 
 [source,csharp]
@@ -108,24 +106,13 @@ Para métrica formal `BenchmarkDotNet` (Could, `PrivateAssets`):
 {
     private readonly SqlTemplate _tpl = SqlTemplate.Parse("SELECT * FROM Users {WHERE} {IF:Name} AND Name=@Name {END} {ENDWHERE}");
     [Benchmark] public SqlResult Template() => _tpl.Render(new { Name="eder" });
-    [Benchmark] public Task<int> Batch() => SqlBatch.InsertBatchAsync(conn, "Users", usersBatch);
 }
 // dotnet run -c Release --project tests/Footing.Framework.Benchmarks
-// Result: Template ~0.8µs, Batch 500 rows ~12ms
 ----
 
-NOTE: `BenchmarkDotNet` permanece `Could` — use só se dor perf >30% ou SLO `<50ms`.
+== Transações DDL
 
-== UseTransaction — Won't definitivo (DDL transacional agnóstico não suportado)
-
-Ver xref:migrations.adoc#_usetransaction_wont_definitivo_ddl_transacional_agnostico_nao_suportado[Migrations — UseTransaction Won't definitivo]. `MigrationOptions.UseTransaction = true` **não suportado, mesmo com BUY** — `MSSQL` tolera mas não recomenda, `Firebird/dbf/SQLite` não permitem `DDL` em transação. `AutoTransaction=false` agnóstico; usuário controla `BEGIN/COMMIT` no `.sql` se `PG` quiser. Tentativa lança `NotSupportedException` descritivo.
-
-[source,csharp]
-----
-// Won't — throws NotSupportedException (agnostic DDL not supported)
-var runnerTx = new MigrationRunner(journal, scripts, factory, new MigrationOptions{ UseTransaction = true });
-// throw NotSupportedException("DDL transactions are not supported. Use BEGIN/COMMIT inside the .sql script if your database supports transactional DDL.")
-----
+Transações DDL agnósticas não são suportadas — `UseTransaction = true` lança `NotSupportedException`. Para atomicidade, use `BEGIN/COMMIT` no `.sql` quando o banco permite (ex. PostgreSQL). Ver xref:migrations.adoc#_transacoes_ddl[Migrations — Transações].
 
 == Checklist OTel/Health
 

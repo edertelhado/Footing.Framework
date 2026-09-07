@@ -1,8 +1,8 @@
-= Migrations — SPI carteiro Y/N
+= Migrations
 include::partial$_attributes.adoc[]
 :icons: font
 
-SPI tripartite agnóstico — app fornece `IDbConnectionFactory` + journal via Dapper. `Y/N CHAR(1) CHECK (success IN ('Y','N'))` vence `BOOLEAN/BIT/INTEGER` (PG `CHAR(1)`, MSSQL `CHAR(1)`, FB `CHAR(1)`, dbf `C(1)`). `BoolCharYNTypeHandler` `bool→'Y'/'N'` `AnsiStringFixedLength Size=1`.
+Migrations agnósticas a banco — o app fornece `IDbConnectionFactory` e implementa o journal via Dapper. O histórico usa `CHAR(1)` com `CHECK (success IN ('Y','N'))`, compatível com PostgreSQL, SQL Server, Firebird e dbf.
 
 == DDL agnóstico
 
@@ -61,7 +61,7 @@ public interface IMigrationRunner
 public sealed record MigrationInfo(string Version, string ScriptName, string Sql, string Checksum, string Type);
 ----
 
-== VersionParser sem regex (11→11)
+== VersionParser
 
 [source,csharp]
 ----
@@ -73,7 +73,7 @@ MigrationVersionParser.TryParse("001__baseline.sql", out var b);  // Type=BASELI
 // sem GeneratedRegex — IndexOf "__"
 ----
 
-== Runner carteiro — 60 LOC agnóstico
+== Runner
 
 [source,csharp]
 ----
@@ -117,13 +117,12 @@ public class BoolCharYNTypeHandler : SqlMapper.TypeHandler<bool>
 }
 ----
 
-== UseTransaction — Won't definitivo (DDL transacional agnóstico não suportado)
+== Transações DDL
 
-**Won't definitivo, sem BUY:** `MigrationOptions.UseTransaction = true` / `AutoTransaction = true` (DDL transacional agnóstico) **não é suportado, mesmo com BUY** — `MSSQL` tolera mas não recomenda, `Firebird/dbf/SQLite` não permitem `DDL` em transação. Framework mantém `AutoTransaction=false` agnóstico; usuário controla `BEGIN/COMMIT` no `.sql` se `PG` quiser.
+Transações DDL agnósticas não são suportadas — `MigrationOptions.UseTransaction = true` lança `NotSupportedException`. Para atomicidade quando o banco permite (ex. PostgreSQL), controle a transação no próprio `.sql`:
 
 [source,sql]
 ----
--- PG se quiser atomicidade — controle no .sql, não no framework
 BEGIN;
 CREATE TABLE foo (...);
 COMMIT;
@@ -131,51 +130,13 @@ COMMIT;
 
 [source,csharp]
 ----
-// Correto — agnóstico, único suportado
+// Suportado
 var runner = new MigrationRunner(journal, new FileSystemMigrationScriptProvider("Migrations"), factory,
     new MigrationOptions{ Placeholders = new Dictionary<string,string>{ ["schema"]="public"} });
 
-// Won't — throws NotSupportedException (agnostic DDL not supported)
+// Não suportado — lança NotSupportedException
 var runnerTx = new MigrationRunner(journal, scripts, factory, new MigrationOptions{ UseTransaction = true });
-// throw NotSupportedException("DDL transactions are not supported. Use BEGIN/COMMIT inside the .sql script if your database supports transactional DDL.")
 ----
-
-[source,csharp]
-----
-// src/Footing.Framework/Migrations/MigrationOptions.cs — Won't with throw (comments/messages in English, no .md reference)
-public sealed class MigrationOptions
-{
-    public Dictionary<string,string> Placeholders { get; set; } = new();
-    private bool _useTransaction;
-    /// <summary>
-    /// Definitive Won't — agnostic transactional DDL is not supported, even with BUY.
-    /// Keeps AutoTransaction=false agnostic; caller controls BEGIN/COMMIT inside the .sql script if needed.
-    /// Setter throws NotSupportedException when set to true.
-    /// </summary>
-    public bool UseTransaction
-    {
-        get => _useTransaction;
-        set
-        {
-            if (value) throw new NotSupportedException("DDL transactions are not supported. Use BEGIN/COMMIT inside the .sql script if your database supports transactional DDL.");
-            _useTransaction = value;
-        }
-    }
-}
-// src/Footing.Framework/Migrations/MigrationRunner.cs — guard without driver check
-public MigrationRunner(..., MigrationOptions? options = null)
-{
-    _options = options ?? new();
-    if (_options.UseTransaction) throw new NotSupportedException("DDL transactions are not supported. Use BEGIN/COMMIT inside the .sql script if your database supports transactional DDL.");
-}
-public async Task<MigrationResult> MigrateAsync(CancellationToken ct = default)
-{
-    if (_options.UseTransaction) throw new NotSupportedException("DDL transactions are not supported. Use BEGIN/COMMIT inside the .sql script if your database supports transactional DDL.");
-    // ...
-}
-----
-
-WARNING: `UseTransaction` permanece `false` default e `true` sempre lança `NotSupportedException` em Inglês — sem `if (driver==pg)`, apenas `throw` direto agnóstico e sem referência a arquivo `.md` em runtime. `MSSQL` tolera mas não recomenda `DDL` transacional (lock longo), `Firebird/dbf` `DDL auto-commit` ignora transação. Por isso **Won't definitivo, sem BUY** — documentação externa em Português explica o racional; mensagem de erro em runtime permanece em Inglês.
 
 == Cli
 

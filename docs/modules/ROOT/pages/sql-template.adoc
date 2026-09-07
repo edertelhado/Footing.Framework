@@ -186,11 +186,11 @@ tpl.Render(new { Ativo="" }); // "" → traz todos (shorthand falsy)
 {IF:Busca != null and Busca != ''} AND x LIKE @Busca {END}  -- 1× and ok
 {IF:length(Name) > 18} AND Name=@Name {END}                    -- 2.1 opt-in
 {IF:defined(Ativo) and Ativo=='Y'} AND Ativo='Y' {END}       -- 2.4 compat
-{IF:Busca != null and Busca != '' and Extra != null}         -- 3× and → false+Warning Won't 3.0
-{IF:Status == 'A' or Status == 'B'}                           -- or → false+Warning Won't
+ {IF:Busca != null and Busca != '' and Extra != null}         -- não suportado → false
+ {IF:Status == 'A' or Status == 'B'}                           -- não suportado → false
 ----
 
-Suporte a `or`, `and` com 3+ fatores, `()` e `!` não está no escopo atual — use blocos aninhados ou sequenciais.
+Suporte a `or`, `and` com 3+ fatores, `()` e `!` não está no escopo — use blocos aninhados ou sequenciais.
 
 == Ver também
 
