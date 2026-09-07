@@ -81,6 +81,8 @@ public class EventBus : IAsyncDisposable
                 "Registered listener {Type}.{Method} for event {Event} with priority {Priority}",
                 type.Name, method.Name, eventType.Name, priority);
         }
+
+        RegisterTypedEventHandlerInterfaces(instance);
     }
 
     private void RegisterTypedEventHandlerInterfaces(object service)

@@ -12,7 +12,7 @@
         <!-- NuGet -->
         <IsPackable>true</IsPackable>
         <PackageId>Footing.Framework</PackageId>
-        <Version>3.5.4</Version>
+        <Version>3.5.5</Version>
         <Authors>Eder Rafael Telhado</Authors>
         <Company>CapybaraInfo</Company>
         <Description>Microframework base .NET (sapata) — EventBus in-process, Data Layer (SqlTemplate + Dapper), DI auto-scan, Lifecycle e InjectConfig. Zero dependência de domínio.</Description>
