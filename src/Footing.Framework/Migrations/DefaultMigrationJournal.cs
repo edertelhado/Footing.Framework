@@ -1,4 +1,6 @@
 using System.Data;
+using System.Text.RegularExpressions;
+using Microsoft.Extensions.Logging;
 using Footing.Framework.Data;
 
 namespace Footing.Framework.Migrations;
@@ -10,31 +12,72 @@ namespace Footing.Framework.Migrations;
 /// </summary>
 public sealed class DefaultMigrationJournal : IMigrationJournal
 {
+    private static readonly Regex TableRx = new(@"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$", RegexOptions.Compiled);
+    private static readonly Regex VerRx = new(@"^[A-Za-z0-9._\-]{1,50}$", RegexOptions.Compiled);
     private readonly IDbConnectionFactory _factory;
     private readonly MigrationOptions _options;
+    private readonly ILogger<DefaultMigrationJournal>? _log;
 
-    public DefaultMigrationJournal(IDbConnectionFactory factory, Microsoft.Extensions.Options.IOptions<MigrationOptions> options)
+    public DefaultMigrationJournal(IDbConnectionFactory factory, Microsoft.Extensions.Options.IOptions<MigrationOptions> options, ILogger<DefaultMigrationJournal>? log = null)
     {
         _factory = factory;
         _options = options.Value;
+        _log = log;
     }
 
     // internal ctor for tests without IOptions
-    internal DefaultMigrationJournal(IDbConnectionFactory factory, MigrationOptions options)
+    internal DefaultMigrationJournal(IDbConnectionFactory factory, MigrationOptions options, ILogger<DefaultMigrationJournal>? log = null)
     {
         _factory = factory;
         _options = options;
+        _log = log;
     }
 
     private string Table => _options.HistoryTable;
 
+    private void ValidateTable()
+    {
+        if (string.IsNullOrWhiteSpace(Table) || !TableRx.IsMatch(Table))
+            throw new ArgumentException($"HistoryTable inválido: '{Table}'", nameof(MigrationOptions.HistoryTable));
+    }
+
+    private static void ValidateVersion(string version)
+    {
+        if (string.IsNullOrWhiteSpace(version) || version.Length > 50 || !VerRx.IsMatch(version))
+            throw new ArgumentException($"Version inválida: '{version}'", nameof(version));
+        if (version.Any(c => char.IsControl(c) || c == '\u200B' || c == '\uFEFF'))
+            throw new ArgumentException("Version contém caracteres de controle", nameof(version));
+    }
+
+    private static bool IsDuplicateKey(Exception ex)
+    {
+        var m = ex.Message ?? "";
+        return m.Contains("UNIQUE", StringComparison.OrdinalIgnoreCase)
+            || m.Contains("PRIMARY", StringComparison.OrdinalIgnoreCase)
+            || m.Contains("duplicate", StringComparison.OrdinalIgnoreCase)
+            || m.Contains("already exists", StringComparison.OrdinalIgnoreCase)
+            || m.Contains("constraint", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool HasColumn(IDbConnection conn, string col)
+    {
+        try
+        {
+            using var probe = conn.CreateCommand();
+            probe.CommandText = $"SELECT {col} FROM {Table} WHERE 1=0";
+            probe.ExecuteNonQuery();
+            return true;
+        }
+        catch { return false; }
+    }
+
     public Task EnsureHistoryTableAsync(CancellationToken ct = default)
     {
-        // SQL-97: CREATE TABLE IF NOT EXISTS para sqlite/pg, fallback try para firebird/dbf
+        ct.ThrowIfCancellationRequested();
+        ValidateTable();
         using var conn = _factory.CreateConnection();
         if (conn.State != ConnectionState.Open) conn.Open();
         using var cmd = conn.CreateCommand();
-        // Agnostic DDL — tipos padrão: VARCHAR, CHAR(1), TIMESTAMP, BIGINT, VARCHAR(4000)
         cmd.CommandText = $"""
             CREATE TABLE {Table} (
                 version VARCHAR(50) NOT NULL PRIMARY KEY,
@@ -48,16 +91,15 @@ public sealed class DefaultMigrationJournal : IMigrationJournal
             )
             """;
         try { cmd.ExecuteNonQuery(); }
-        catch
-        {
-            // Firebird/dbf may not support IF NOT EXISTS or CHECK — fallback: try CREATE without IF NOT EXISTS, ignore if exists
-            // Swallow to keep agnostic; history check will fail later if truly missing
-        }
+        catch (Exception ex) when (IsDuplicateKey(ex)) { _log?.LogDebug(ex, "History table {Table} já existe", Table); }
+        catch (Exception ex) { _log?.LogError(ex, "EnsureHistoryTable falhou {Table}", Table); throw; }
         return Task.CompletedTask;
     }
 
     public Task<IReadOnlyList<string>> GetAppliedVersionsAsync(CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
+        ValidateTable();
         using var conn = _factory.CreateConnection();
         if (conn.State != ConnectionState.Open) conn.Open();
         using var cmd = conn.CreateCommand();
@@ -76,6 +118,8 @@ public sealed class DefaultMigrationJournal : IMigrationJournal
 
     public Task<string?> GetChecksumAsync(string version, CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
+        ValidateTable(); ValidateVersion(version);
         using var conn = _factory.CreateConnection();
         if (conn.State != ConnectionState.Open) conn.Open();
         using var cmd = conn.CreateCommand();
@@ -87,67 +131,44 @@ public sealed class DefaultMigrationJournal : IMigrationJournal
 
     public Task MarkAppliedAsync(MigrationInfo info, string checksum, long executionTimeMs, string successYN, string? errorMessage, CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
+        ValidateTable(); ValidateVersion(info.Version);
         using var conn = _factory.CreateConnection();
         if (conn.State != ConnectionState.Open) conn.Open();
-        // Upsert agnóstico: tente UPDATE com script_name, fallback para description se coluna não existe (compat sqlite test)
-        try
+        bool hasScriptName = HasColumn(conn, "script_name");
+        string col = hasScriptName ? "script_name" : "description";
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = $"UPDATE {Table} SET {col}=@d, type=@t, checksum=@cs, execution_time_ms=@ms, success=@s, error_message=@e WHERE version=@v";
+        AddParam(cmd, "@v", info.Version);
+        AddParam(cmd, "@d", info.ScriptName);
+        AddParam(cmd, "@t", info.Type);
+        AddParam(cmd, "@cs", checksum);
+        AddParam(cmd, "@ms", executionTimeMs);
+        AddParam(cmd, "@s", successYN);
+        AddParam(cmd, "@e", (object?)errorMessage ?? DBNull.Value);
+        var rows = cmd.ExecuteNonQuery();
+        if (rows == 0)
         {
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = $"UPDATE {Table} SET script_name=@d, type=@t, checksum=@cs, execution_time_ms=@ms, success=@s, error_message=@e WHERE version=@v";
-            AddParam(cmd, "@v", info.Version);
-            AddParam(cmd, "@d", info.ScriptName);
-            AddParam(cmd, "@t", info.Type);
-            AddParam(cmd, "@cs", checksum);
-            AddParam(cmd, "@ms", executionTimeMs);
-            AddParam(cmd, "@s", successYN);
-            AddParam(cmd, "@e", (object?)errorMessage ?? DBNull.Value);
-            var rows = cmd.ExecuteNonQuery();
-            if (rows == 0)
-            {
-                using var ins = conn.CreateCommand();
-                ins.CommandText = $"INSERT INTO {Table} (version, script_name, type, checksum, execution_time_ms, success, error_message) VALUES (@v, @d, @t, @cs, @ms, @s, @e)";
-                AddParam(ins, "@v", info.Version);
-                AddParam(ins, "@d", info.ScriptName);
-                AddParam(ins, "@t", info.Type);
-                AddParam(ins, "@cs", checksum);
-                AddParam(ins, "@ms", executionTimeMs);
-                AddParam(ins, "@s", successYN);
-                AddParam(ins, "@e", (object?)errorMessage ?? DBNull.Value);
-                ins.ExecuteNonQuery();
-            }
-        }
-        catch (Exception ex) when (ex.Message.Contains("no such column: script_name"))
-        {
-            // Fallback para schema legado description (SqliteInMemoryFactory)
-            using var cmd2 = conn.CreateCommand();
-            cmd2.CommandText = $"UPDATE {Table} SET description=@d, type=@t, checksum=@cs, execution_time_ms=@ms, success=@s, error_message=@e WHERE version=@v";
-            AddParam(cmd2, "@v", info.Version);
-            AddParam(cmd2, "@d", info.ScriptName);
-            AddParam(cmd2, "@t", info.Type);
-            AddParam(cmd2, "@cs", checksum);
-            AddParam(cmd2, "@ms", executionTimeMs);
-            AddParam(cmd2, "@s", successYN);
-            AddParam(cmd2, "@e", (object?)errorMessage ?? DBNull.Value);
-            var rows2 = cmd2.ExecuteNonQuery();
-            if (rows2 == 0)
-            {
-                using var ins2 = conn.CreateCommand();
-                ins2.CommandText = $"INSERT INTO {Table} (version, description, type, checksum, execution_time_ms, success, error_message) VALUES (@v, @d, @t, @cs, @ms, @s, @e)";
-                AddParam(ins2, "@v", info.Version);
-                AddParam(ins2, "@d", info.ScriptName);
-                AddParam(ins2, "@t", info.Type);
-                AddParam(ins2, "@cs", checksum);
-                AddParam(ins2, "@ms", executionTimeMs);
-                AddParam(ins2, "@s", successYN);
-                AddParam(ins2, "@e", (object?)errorMessage ?? DBNull.Value);
-                ins2.ExecuteNonQuery();
-            }
+            using var ins = conn.CreateCommand();
+            ins.CommandText = $"INSERT INTO {Table} (version, {col}, type, checksum, execution_time_ms, success, error_message) VALUES (@v, @d, @t, @cs, @ms, @s, @e)";
+            AddParam(ins, "@v", info.Version);
+            AddParam(ins, "@d", info.ScriptName);
+            AddParam(ins, "@t", info.Type);
+            AddParam(ins, "@cs", checksum);
+            AddParam(ins, "@ms", executionTimeMs);
+            AddParam(ins, "@s", successYN);
+            AddParam(ins, "@e", (object?)errorMessage ?? DBNull.Value);
+            try { ins.ExecuteNonQuery(); }
+            catch (Exception ex) when (IsDuplicateKey(ex)) { _log?.LogDebug(ex, "MarkApplied duplicate {Version} — ignorado", info.Version); }
+            catch (Exception ex) { _log?.LogError(ex, "MarkApplied falhou {Version}", info.Version); throw; }
         }
         return Task.CompletedTask;
     }
 
     public Task UpdateChecksumAsync(string version, string newChecksum, CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
+        ValidateTable(); ValidateVersion(version);
         using var conn = _factory.CreateConnection();
         if (conn.State != ConnectionState.Open) conn.Open();
         using var cmd = conn.CreateCommand();
@@ -160,6 +181,8 @@ public sealed class DefaultMigrationJournal : IMigrationJournal
 
     public Task<IReadOnlyList<string>> GetFailedVersionsAsync(CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
+        ValidateTable();
         using var conn = _factory.CreateConnection();
         if (conn.State != ConnectionState.Open) conn.Open();
         using var cmd = conn.CreateCommand();
@@ -172,48 +195,33 @@ public sealed class DefaultMigrationJournal : IMigrationJournal
 
     public Task<IReadOnlyList<MigrationStatus>> GetInfoAsync(CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
+        ValidateTable();
         using var conn = _factory.CreateConnection();
         if (conn.State != ConnectionState.Open) conn.Open();
+        bool hasScriptName = HasColumn(conn, "script_name");
+        string col = hasScriptName ? "script_name" : "description";
         using var cmd = conn.CreateCommand();
-        try
+        cmd.CommandText = $"SELECT version, {col}, type, checksum, installed_on, success FROM {Table} ORDER BY version";
+        var list = new List<MigrationStatus>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
         {
-            cmd.CommandText = $"SELECT version, script_name, type, checksum, installed_on, success FROM {Table} ORDER BY version";
-            var list = new List<MigrationStatus>();
-            using var r = cmd.ExecuteReader();
-            while (r.Read())
-            {
-                var ver = r.GetString(0);
-                var desc = r.IsDBNull(1) ? "" : r.GetString(1);
-                var type = r.IsDBNull(2) ? "VERSIONED" : r.GetString(2);
-                var cs = r.IsDBNull(3) ? null : r.GetString(3);
-                var installed = r.IsDBNull(4) ? (DateTime?)null : r.GetDateTime(4);
-                var success = r.IsDBNull(5) ? "Y" : r.GetString(5);
-                list.Add(new MigrationStatus(ver, desc, type, cs, installed, success == "Y" ? "Success" : "Failed"));
-            }
-            return Task.FromResult<IReadOnlyList<MigrationStatus>>(list);
+            var ver = r.GetString(0);
+            var desc = r.IsDBNull(1) ? "" : r.GetString(1);
+            var type = r.IsDBNull(2) ? "VERSIONED" : r.GetString(2);
+            var cs = r.IsDBNull(3) ? null : r.GetString(3);
+            var installed = r.IsDBNull(4) ? (DateTime?)null : r.GetDateTime(4);
+            var success = r.IsDBNull(5) ? "Y" : r.GetString(5);
+            list.Add(new MigrationStatus(ver, desc, type, cs, installed, success == "Y" ? "Success" : "Failed"));
         }
-        catch (Exception ex) when (ex.Message.Contains("no such column: script_name"))
-        {
-            using var cmd2 = conn.CreateCommand();
-            cmd2.CommandText = $"SELECT version, description, type, checksum, installed_on, success FROM {Table} ORDER BY version";
-            var list2 = new List<MigrationStatus>();
-            using var r2 = cmd2.ExecuteReader();
-            while (r2.Read())
-            {
-                var ver = r2.GetString(0);
-                var desc = r2.IsDBNull(1) ? "" : r2.GetString(1);
-                var type = r2.IsDBNull(2) ? "VERSIONED" : r2.GetString(2);
-                var cs = r2.IsDBNull(3) ? null : r2.GetString(3);
-                var installed = r2.IsDBNull(4) ? (DateTime?)null : r2.GetDateTime(4);
-                var success = r2.IsDBNull(5) ? "Y" : r2.GetString(5);
-                list2.Add(new MigrationStatus(ver, desc, type, cs, installed, success == "Y" ? "Success" : "Failed"));
-            }
-            return Task.FromResult<IReadOnlyList<MigrationStatus>>(list2);
-        }
+        return Task.FromResult<IReadOnlyList<MigrationStatus>>(list);
     }
 
     public Task RepairAsync(CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
+        ValidateTable();
         using var conn = _factory.CreateConnection();
         if (conn.State != ConnectionState.Open) conn.Open();
         using var cmd = conn.CreateCommand();
@@ -224,24 +232,19 @@ public sealed class DefaultMigrationJournal : IMigrationJournal
 
     public Task BaselineAsync(string version, CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
+        ValidateTable(); ValidateVersion(version);
         using var conn = _factory.CreateConnection();
         if (conn.State != ConnectionState.Open) conn.Open();
-        try
-        {
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = $"INSERT INTO {Table} (version, script_name, type, checksum, execution_time_ms, success) VALUES (@v, 'baseline', 'BASELINE', @cs, 0, 'Y')";
-            AddParam(cmd, "@v", version);
-            AddParam(cmd, "@cs", MigrationChecksum.Compute("baseline:" + version));
-            try { cmd.ExecuteNonQuery(); } catch { /* already baselined — ignore */ }
-        }
-        catch (Exception ex) when (ex.Message.Contains("no such column: script_name"))
-        {
-            using var cmd2 = conn.CreateCommand();
-            cmd2.CommandText = $"INSERT INTO {Table} (version, description, type, checksum, execution_time_ms, success) VALUES (@v, 'baseline', 'BASELINE', @cs, 0, 'Y')";
-            AddParam(cmd2, "@v", version);
-            AddParam(cmd2, "@cs", MigrationChecksum.Compute("baseline:" + version));
-            try { cmd2.ExecuteNonQuery(); } catch { }
-        }
+        bool hasScriptName = HasColumn(conn, "script_name");
+        string col = hasScriptName ? "script_name" : "description";
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = $"INSERT INTO {Table} (version, {col}, type, checksum, execution_time_ms, success) VALUES (@v, 'baseline', 'BASELINE', @cs, 0, 'Y')";
+        AddParam(cmd, "@v", version);
+        AddParam(cmd, "@cs", MigrationChecksum.Compute("baseline:" + version));
+        try { cmd.ExecuteNonQuery(); }
+        catch (Exception ex) when (IsDuplicateKey(ex)) { _log?.LogDebug(ex, "Baseline {Version} já existe — ignorado", version); }
+        catch (Exception ex) { _log?.LogError(ex, "Baseline falhou {Version}", version); throw; }
         return Task.CompletedTask;
     }
 
