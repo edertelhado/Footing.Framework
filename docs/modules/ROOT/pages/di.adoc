@@ -18,11 +18,11 @@ services.AddDependencyWalk("MeuProjeto", configuration, typeof(Program).Assembly
 [source,mermaid]
 ----
 flowchart TD
-  Scan[\"Assembly.GetTypes() + StartsWith(rootNamespace)\"] --> Filter[\"Where Has [Injectable]/[Service]/[Repository]\n+ try/catch ReflectionTypeLoadException\"]
-  Filter --> Lifetime[\"Map Attribute → Lifetime\n[Service]=Transient  [Repository]=Scoped  [Injectable(Lifetime)]\"]
-  Lifetime --> Register[\"services.Add(ServiceDescriptor)\nActivatorUtilities.CreateInstance\"]
-  Register --> Listeners[\"ResolverExtensions.RegisterEventListeners\nChannel dedup ConcurrentDictionary\"]
-  Register --> Lifecycle[\"PostConstruct → PreDestroy\nDisposable + IAsyncDisposable\"]
+  Scan["Assembly.GetTypes StartsWith rootNamespace"] --> Filter["Where Has Injectable Service Repository<br/>try catch ReflectionTypeLoadException"]
+  Filter --> Lifetime["Map Attribute to Lifetime<br/>Service=Transient Repository=Scoped Injectable"]
+  Lifetime --> Register["services.Add ServiceDescriptor<br/>ActivatorUtilities.CreateInstance"]
+  Register --> Listeners["RegisterEventListeners<br/>Channel dedup ConcurrentDictionary"]
+  Register --> Lifecycle["PostConstruct to PreDestroy<br/>Disposable IAsyncDisposable"]
 ----
 
 == Atributos

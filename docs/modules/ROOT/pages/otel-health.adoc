@@ -34,10 +34,13 @@ services.AddOpenTelemetry()
 [source,mermaid]
 ----
 flowchart LR
-  Render[\"SqlTemplate.Render\"] --> Act1[\"Activity Footing.Framework\nSqlTemplateRender 0 cost if no listener\"]
-  Publish[\"EventBus.Publish\"] --> Act2[\"EventBusPublish\"]
-  Batch[\"SqlBatch.InsertBatchAsync\"] --> Act3[\"SqlBatch tag batch.size\"]
-  Act1 & Act2 & Act3 --> OTel[\"OpenTelemetry Collector\"] --> Grafana[\"Grafana / Jaeger\"]
+  Render["SqlTemplate.Render"] --> Act1["Activity SqlTemplateRender<br/>0 cost if no listener"]
+  Publish["EventBus.Publish"] --> Act2["EventBusPublish"]
+  Batch["SqlBatch.InsertBatchAsync"] --> Act3["SqlBatch batch size"]
+  Act1 --> OTel["OpenTelemetry Collector"]
+  Act2 --> OTel
+  Act3 --> OTel
+  OTel --> Grafana["Grafana Jaeger"]
 ----
 
 == Health — /health

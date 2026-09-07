@@ -120,9 +120,9 @@ NOTE: Suite BenchmarkDotNet permanece `Could Have` — Stopwatch Smoke já prova
 [source,mermaid]
 ----
 flowchart LR
-  Items[\"IEnumerable<T> items\"] --> Cache[\"PropsCache ConcurrentDictionary<Type,PropertyInfo[]>\nReflectionCache shared\"]
-  Cache --> Chunk[\"Chunk 500 + 2100/colCount\"]
-  Chunk --> SQL[\"INSERT INTO t (cols) VALUES (@p0_Col), (@p1_Col) ...\"]
-  SQL --> Dapper[\"ExecuteAsync(sql, DynamicParameters)\"]
-  Dapper --> DB[\"PG/MySQL/SQLite/Firebird/dbf\"]
+  Items["IEnumerable items"] --> Cache["PropsCache ConcurrentDictionary<br/>ReflectionCache shared"]
+  Cache --> Chunk["Chunk 500 and 2100 div colCount"]
+  Chunk --> SQL["INSERT INTO t VALUES params"]
+  SQL --> Dapper["ExecuteAsync"]
+  Dapper --> DB["PG MySQL SQLite Firebird dbf"]
 ----

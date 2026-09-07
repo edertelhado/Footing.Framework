@@ -19,19 +19,19 @@ image:https://img.shields.io/badge/version-{footing-version}-blue[Version {footi
 [source,mermaid]
 ----
 flowchart LR
-  Controller --> Service["Service [Service]"]
-  Service --> Repo["Repo [Repository]"]
+  Controller --> Service["Service"]
+  Service --> Repo["Repository"]
   Repo --> Dapper
   Dapper --> Factory["IDbConnectionFactory"]
-  Factory --> DB[("PG / Firebird / dbf\n(via SPI)")]
-  Service --> EB["EventBus\nChannel bounded 100\nFullMode.Wait"]
-  EB --> Handler["IEventHandler<T>\n[EventListener] Priority"]
-  Service --> Outbox["OutboxProcessor\npoll 2s Batch 100"]
-  Outbox --> Store["IOutboxStore\nNpgsql/Firebird/dbf"]
-  Service --> Batch["SqlBatch\nVALUES chunked 500/2100"]
-  Migrations["MigrationRunner\nY/N CHAR(1)"] --> Factory
-  OTel["ActivitySource\nFooting.Framework"] -.-> EB & Dapper & Batch
-  Health["/health\nDbHealthCheck + EventBusHealthCheck"] -.-> Factory & EB
+  Factory --> DB[("PG Firebird dbf via SPI")]
+  Service --> EB["EventBus Channel bounded"]
+  EB --> Handler["IEventHandler Priority"]
+  Service --> Outbox["OutboxProcessor poll 2s"]
+  Outbox --> Store["IOutboxStore"]
+  Service --> Batch["SqlBatch chunked"]
+  Migrations["MigrationRunner YN"] --> Factory
+  OTel["ActivitySource"] -.-> EB & Dapper & Batch
+  Health["Health Checks"] -.-> Factory & EB
 ----
 
 *Princípios:* agnóstico DB (GLOBAL_RULES 59L), SPI `IOutboxStore/IIdempotencyStore` 0 deps, `<3.5K LOC`, `11 GeneratedRegex` source-gen AOT, fail-fast estrutura vs fail-safe dados.

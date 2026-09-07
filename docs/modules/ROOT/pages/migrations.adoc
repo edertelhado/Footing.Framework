@@ -94,15 +94,15 @@ var dry = await runner.GenerateScriptAsync(); // sem executar, DBA revisa
 [source,mermaid]
 ----
 flowchart LR
-  Scripts[\"FileSystem / EmbeddedResource\nGetScriptsAsync()\"] --> Sort[\"OrderBy Version Ordinal\"]
-  Sort --> Check[\"GetFailedVersions → throw se N pendente\"]
-  Check --> Loop[\"ForEach script\"]
-  Loop --> Repeat{{\"REPEATABLE?\"}}
-  Repeat -->|yes checksum diff| Exec[\"ApplyPlaceholders → ExecuteRawSql\n(IDbCommand)\"] --> JournalY[\"MarkApplied Y\"]
-  Repeat -->|checksum same| Skip[\"skip\"]
-  Loop --> Applied{{\"applied?\"}}
-  Applied -->|no| Exec2[\"ExecuteRawSql\"] --> JournalY2
-  Exec -->|catch| JournalN[\"MarkApplied N + throw MigrationException\"]
+  Scripts["FileSystem EmbeddedResource GetScriptsAsync"] --> Sort["OrderBy Version"]
+  Sort --> Check["GetFailedVersions throw if N pending"]
+  Check --> Loop["ForEach script"]
+  Loop --> Repeat{"REPEATABLE?"}
+  Repeat -->|yes diff| Exec["ApplyPlaceholders ExecuteRawSql"] --> JournalY["MarkApplied Y"]
+  Repeat -->|same| Skip["skip"]
+  Loop --> Applied{"applied?"}
+  Applied -->|no| Exec2["ExecuteRawSql"] --> JournalY2["MarkApplied Y"]
+  Exec -->|catch| JournalN["MarkApplied N throw MigrationException"]
 ----
 
 == TypeHandler Y/N
