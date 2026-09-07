@@ -36,20 +36,8 @@ Template engine leve para SQL dinâmico com Dapper e sem dependência de um banc
 | `{BETWEEN:CreatedAt} AND x BETWEEN @CreatedAtMin AND @CreatedAtMax {END}`
 
 | `{TRIM prefix="..." prefixOverrides="..." suffix="..." suffixOverrides="..."} ... {ENDTRIM}`
-| Adiciona prefixo/sufixo e remove lixo. Solução para `{WHERE}` + `{IF}` que geram `WHERE AND`.
-| Sem TRIM: `SELECT * FROM t WHERE AND name=@Name` (erro). Com TRIM: `SELECT * FROM t WHERE name=@Name`.
-+
-[source,sql]
-----
-SELECT * FROM users
-{TRIM prefix="WHERE" prefixOverrides="AND |OR "}
-  {IF:Name} AND name LIKE @Name {END}
-  {IF:Status} AND status = @Status {END}
-{ENDTRIM}
-----
-+
-Se `Name` e `Status` são informados: `WHERE name LIKE @Name AND status = @Status`.
-Se só `Name`: `WHERE name LIKE @Name` (sem `AND` solto).
+| Adiciona prefixo e remove lixo. Resolve `WHERE AND` solto.
+| `SELECT * FROM users {TRIM prefix="WHERE" prefixOverrides="AND \|OR "} {IF:Name} AND name=@Name {END} {ENDTRIM}` → se Name existe: `WHERE name=@Name`; se não: vazio.
 
 | `{SET} ... {ENDSET}`
 | Açúcar `TRIM prefix="SET" suffixOverrides=","`.
