@@ -2,22 +2,22 @@
 include::partial$_attributes.adoc[]
 :icons: font
 
-Camadas, fluxo e princípios. Inspirado em Rust crates + Spring Boot auto-configuration.
+Camadas, fluxo e princípios.
 
 == Camadas
 
 [source,mermaid]
 ----
 flowchart LR
-  Controller --> Service["Service"]
-  Service --> Repo["Repository"]
-  Repo --> Dapper
+  Controller --> Service
+  Service --> Repository
+  Repository --> Dapper
   Dapper --> Factory["IDbConnectionFactory"]
-  Factory --> DB[("PG Firebird dbf via SPI")]
+  Factory --> DB[("PostgreSQL / Firebird")]
   Service --> EB["EventBus Channel"]
   EB --> Handler["IEventHandler Priority"]
   Service --> Batch["SqlBatch chunked"]
-  Migrations["MigrationRunner YN"] --> Factory
+  MigrationRunner --> Factory
   OTel["ActivitySource"] -.-> EB & Dapper & Batch
   Health["Health Checks"] -.-> Factory & EB
 ----
@@ -34,11 +34,11 @@ flowchart TD
   Register --> Lifecycle["PostConstruct PreDestroy"]
 ----
 
-*Princípios:* agnóstico a banco (`0 Npgsql/Firebird/OleDb` no `src/`), SPI `IOutboxStore/IIdempotencyStore/IMigrationJournal`, `<3.5K LOC`, fail-fast de estrutura vs fail-safe de dados.
+*Princípios:* agnóstico a banco, SPI `IOutboxStore/IIdempotencyStore/IMigrationJournal`, `<3.5K LOC`, fail-fast de estrutura vs fail-safe de dados.
 
 == Auto-configuration (TryAdd)
 
-Como Spring Boot: `AddMigrations`, `AddEventBus`, `AddFootingHealthChecks` registram defaults via `TryAddSingleton`. Se o app registrar `AddSingleton<IMigrationJournal, MeuJournal>` antes ou depois, o custom vence.
+`AddMigrations`, `AddEventBus`, `AddFootingHealthChecks` registram defaults via `TryAddSingleton`. Se o app registrar `AddSingleton<IMigrationJournal, MeuJournal>` antes ou depois, o custom vence.
 
 == Ver também
 

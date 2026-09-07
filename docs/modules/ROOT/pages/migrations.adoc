@@ -2,7 +2,7 @@
 include::partial$_attributes.adoc[]
 :icons: font
 
-Migrations agnósticas a banco — `AddMigrations(Assembly)` com `*.sql` como `EmbeddedResource`, SQL-97 puro. Histórico usa `CHAR(1) Y/N` compatível com PostgreSQL, SQL Server, Firebird e dbf.
+Migrations agnósticas a banco — `AddMigrations(Assembly)` com `*.sql` como `EmbeddedResource`, SQL-97 puro. Histórico usa `CHAR(1) Y/N` compatível com PostgreSQL, SQL Server e Firebird.
 
 == DDL
 
@@ -109,7 +109,7 @@ flowchart LR
 ----
 
 *   Checksum `MigrationChecksum.Compute(sql)` SHA256 64 hex — drift gera `MigrationException`.
-*   `ExecuteRawSql` via `IDbCommand` puro — SQL puro, sem `Npgsql` no `src/`.
+*   `ExecuteRawSql` via `IDbCommand` puro — SQL puro.
 
 == TypeHandler Y/N
 

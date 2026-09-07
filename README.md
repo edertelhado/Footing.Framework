@@ -20,11 +20,11 @@ Funciona especialmente bem em sistemas que misturam código novo com legado, mú
 * **EventBus in-process** com `Channel<T>`, workers paralelos e prioridade de handlers.
 * **SQL dinâmico** usando arquivos `.sql` e templates simples, sem ORM.
 * **Batch SQL** com chunking automático para inserts em massa.
-* **DI auto-scan** determinístico por assembly, sem source generator.
+* **DI auto-scan** determinístico por assembly.
 * **Lifecycle** com `PostConstruct` e `PreDestroy`.
 * **Configuração por atributo** com `InjectConfig`.
 * **Migrations SQL** embarcadas como `EmbeddedResource`.
-* **SPI para infraestrutura externa**, permitindo conectar Redis, PostgreSQL, Firebird, DBF etc. sem contaminar o core.
+* **SPI para infraestrutura externa**, permitindo conectar PostgreSQL, Firebird, Redis etc. sem contaminar o core.
 * **OpenTelemetry** através de `ActivitySource`.
 * **Health Checks** integrados ao pipeline do ASP.NET.
 
@@ -38,7 +38,7 @@ Footing faz sentido quando você precisa de uma base de infraestrutura para apli
 * APIs e serviços internos;
 * aplicações que utilizam SQL diretamente;
 * sistemas legados modernizados gradualmente;
-* aplicações que precisam trabalhar com PostgreSQL, Firebird, MySQL, SQLite ou DBF;
+* aplicações que precisam trabalhar com PostgreSQL, Firebird, MySQL ou SQLite;
 * sistemas onde Dapper é suficiente, mas ainda faltam algumas peças de infraestrutura.
 
 É especialmente útil quando a alternativa seria criar novamente o mesmo conjunto de componentes em cada projeto.
@@ -256,7 +256,7 @@ O processamento utiliza workers configuráveis e capacidade limitada, evitando c
 
 # DI sem magia
 
-O `AddDependencyWalk` percorre os assemblies configurados e registra as dependências encontradas.
+O `AddDependencyWalk` percorre os assemblies configurados e registra as dependências encontradas automaticamente.
 
 ```csharp
 builder.Services.AddDependencyWalk(
@@ -266,9 +266,7 @@ builder.Services.AddDependencyWalk(
 );
 ```
 
-A descoberta é determinística por assembly e não depende de source generators.
-
-A proposta é semelhante ao conceito de auto-configuration encontrado em frameworks maiores, mas mantendo a implementação pequena.
+A descoberta é determinística por assembly, sem source generators ou mágica.
 
 ---
 
@@ -376,7 +374,7 @@ IMigrationJournal
 IDbConnectionFactory
 ```
 
-Implementações concretas podem viver em outro projeto:
+Implementações concretas vivem em projetos separados:
 
 ```text
 Footing.Framework
@@ -384,18 +382,10 @@ Footing.Framework
         ├── PostgreSQL
         ├── Firebird
         ├── Redis
-        ├── DBF
         └── outros providers
 ```
 
-Isso mantém o assembly principal sem dependências específicas como:
-
-```text
-Npgsql
-Firebird
-OleDb
-Redis
-```
+O assembly principal não referencia nenhum driver específico — cada aplicação escolhe seu provider.
 
 O padrão é:
 
@@ -442,7 +432,7 @@ flowchart LR
     Service --> Repository
     Repository --> Dapper
     Dapper --> Factory["IDbConnectionFactory"]
-    Factory --> DB[("PostgreSQL / Firebird / DBF")]
+    Factory --> DB[("PostgreSQL / Firebird")]
 
     Service --> EventBus["EventBus"]
     EventBus --> Handler["EventHandler"]
@@ -463,7 +453,7 @@ A arquitetura segue alguns princípios simples:
 
 ### Banco agnóstico
 
-O core não depende diretamente de PostgreSQL, Firebird, MySQL, SQLite ou DBF.
+O core não depende diretamente de PostgreSQL, Firebird, MySQL ou SQLite.
 
 ### SQL explícito
 

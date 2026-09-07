@@ -2,36 +2,38 @@
 include::partial$_attributes.adoc[]
 :icons: font
 
-Framework só SPI (interface), app escolhe banco — `0 PackageReference Npgsql/Firebird/OleDb/Redis` no `src/`.
+O core define apenas contratos (interfaces). Cada aplicação escolhe onde implementar — PostgreSQL, Firebird, Redis ou memória.
 
 == Idempotency
 
 [source,csharp]
 ----
 public interface IIdempotencyStore {
-  bool TryGet<T>(string key, out T? value);
-  void Set<T>(string key, T value, TimeSpan? ttl = null);
   Task<T> GetOrCreateAsync<T>(string key, Func<Task<T>> factory, TimeSpan? ttl = null, CancellationToken ct = default);
 }
 
-// App registra — exemplo Memory (single-pod)
-services.AddSingleton<IIdempotencyStore, MeuIdempotencyStore>(); // Redis/Firebird/dbf
-
-// Controller — Idempotency-Key header
-[HttpPost("/pedidos")]
-public async Task<IActionResult> Create([FromHeader(Name="Idempotency-Key")] string key, CreatePedidoDto dto, [FromServices] IIdempotencyStore store) {
-  if (string.IsNullOrEmpty(key)) return BadRequest("Idempotency-Key required");
-  var pedido = await store.GetOrCreateAsync(key, () => handler.Create(dto), TimeSpan.FromHours(24));
-  return Created($"/pedidos/{pedido.Id}", pedido);
-}
+// App registra — implementação escolhida pelo projeto
+services.AddSingleton<IIdempotencyStore, MeuIdempotencyStore>();
 ----
+
+Uso em controller:
 
 [source,csharp]
 ----
-include::example$MemoryIdempotencyStore.cs[]
+[HttpPost("/pedidos")]
+public async Task<IActionResult> Create(
+    [FromHeader(Name="Idempotency-Key")] string key,
+    CreatePedidoDto dto,
+    [FromServices] IIdempotencyStore store)
+{
+  if (string.IsNullOrEmpty(key)) return BadRequest("Idempotency-Key required");
+  var pedido = await store.GetOrCreateAsync(
+      key,
+      () => handler.Create(dto),
+      TimeSpan.FromHours(24));
+  return Created($"/pedidos/{pedido.Id}", pedido);
+}
 ----
-
-`MemoryIdempotencyStore` via `IMemoryCache` é single-pod; em cluster use `RedisIdempotencyStore`.
 
 == Outbox + Processor
 
@@ -91,20 +93,11 @@ include::example$Outbox/FirebirdOutboxStore.cs[]
 
 Firebird: `SELECT FIRST @b * FROM OUTBOX WHERE PROCESSED_AT IS NULL`.
 
-=== dbf (VFP)
-
-[source,csharp]
-----
-include::example$Outbox/DbfOutboxStore.cs[]
-----
-
-dbf: `PROVIDER=VFPOLEDB` + `SELECT TOP @b * FROM outbox.dbf WHERE ProcessedAt IS NULL`.
-
 == Registro
 
 [source,csharp]
 ----
-services.AddSingleton<IOutboxStore, NpgsqlOutboxStore>(); // ou Firebird/Dbf
+services.AddSingleton<IOutboxStore, NpgsqlOutboxStore>(); // ou Firebird
 services.AddHostedService<OutboxProcessor>();
 
 // Uso transacional — atomicidade sem loss

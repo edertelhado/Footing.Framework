@@ -2,7 +2,7 @@
 include::partial$_attributes.adoc[]
 :icons: font
 
-Auto-scan determinístico via reflexão. Decisão: Walk reflexivo — sem Source Generator.
+Auto-scan determinístico via reflexão.
 
 == AddDependencyWalk
 
@@ -85,20 +85,9 @@ public class EmailService {
 
 Suporta `void`, `Task`, `ValueTask` — múltiplos `[PostConstruct]` invalido (`InvalidOperationException`).
 
-== Walk vs Source Generator
+== Como funciona
 
-[cols="1,1,2"]
-|===
-| Critério | Walk reflexivo | SG Roslyn
-
-| Startup | `~50ms` para 300 types | `~5ms` (ganho irrelevante para monólito)
-| Tipos | `<500` monólito | `>500` + `PublishAot`
-| Build | Sem analyzer | Com analyzer
-| Custo | Baixo | Alto
-| Decisão | **Walk** | Avaliado para futuro
-|===
-
-POC de SG arquivado em `poc/di-source-generator-archived`.
+O scan utiliza reflexão sobre assemblies explícitos, mapeando atributos `[Injectable]`, `[Service]` e `[Repository]` para `ServiceDescriptor`. Determinístico e auditável — sem source generators ou mágica.
 
 == Config — InjectConfig
 

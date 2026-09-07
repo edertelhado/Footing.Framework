@@ -2,7 +2,7 @@
 include::partial$_attributes.adoc[]
 :icons: font
 
-Insert em batch Dapper-friendly, agnóstico a banco (PostgreSQL, SQL Server, SQLite, Firebird, dbf) sem `DataTable/SqlBulkCopy`, chunking automático `500` com auto-ajuste para limite `2100` params.
+Insert em batch Dapper-friendly, agnóstico a banco (PostgreSQL, SQL Server, SQLite, Firebird) sem `DataTable/SqlBulkCopy`, chunking automático `500` com auto-ajuste para limite `2100` params.
 
 == API
 
@@ -108,5 +108,5 @@ flowchart LR
   Cache --> Chunk["Chunk 500 and 2100 div colCount"]
   Chunk --> SQL["INSERT INTO t VALUES params"]
   SQL --> Dapper["ExecuteAsync"]
-  Dapper --> DB["PG MySQL SQLite Firebird dbf"]
+  Dapper --> DB["PG MySQL SQLite Firebird"]
 ----

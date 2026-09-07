@@ -2,14 +2,13 @@
 include::partial$_attributes.adoc[]
 :icons: font
 
-Copie e cole. Sem `samples/` compilável — portal é a porta de entrada.
+Copie e cole — portal é a porta de entrada.
 
 == 1) Instalar
 
 [source,bash]
 ----
 dotnet add package Footing.Framework --version {footing-version}
-# ou nuget: <PackageReference Include="Footing.Framework" Version="{footing-version}" />
 ----
 
 == 2) Registrar no Host
@@ -35,7 +34,7 @@ builder.Services.AddMigrations(o => {
   o.RepairOnMigrate = false;   // DELETE WHERE success='N' se ativado
   o.BaselineOnMigrate = false; o.BaselineVersion = "0";
 });
-// Override se precisar (Spring Security like): AddSingleton(IMigrationJournal, MeuJournal) antes ou depois
+// Override se precisar: AddSingleton(IMigrationJournal, MeuJournal) antes ou depois
 
 // Health + OTel
 builder.Services.AddFootingHealthChecks();
@@ -52,7 +51,7 @@ public sealed class NpgsqlConnectionFactory(string cs) : IDbConnectionFactory
 }
 ----
 
-TIP: Agnosticismo — troque `NpgsqlConnectionFactory` por `FbConnectionFactory` ou `SqliteInMemoryFactory` sem tocar `src/`.
+TIP: Agnosticismo — troque `NpgsqlConnectionFactory` por `FbConnectionFactory` ou `SqliteInMemoryFactory`.
 
 == 3) Usar
 
@@ -92,6 +91,6 @@ curl -X POST http://localhost:5000/users -H "Idempotency-Key: k1" -d '{"name":"e
 
 * xref:data-sqltemplate.adoc[SqlTemplate 11 tags] — copie `Sql/Users/Search.sql` com `\{WHERE}\{IF}\{IN}\{CHOOSE}`
 * xref:migrations.adoc[Migrations] — `AddMigrations` com `__migrations CHAR(1) Y/N`
-* xref:resiliencia-spi.adoc[Resiliência SPI] — escolha PG/Firebird/dbf na mesma interface
+* xref:resiliencia-spi.adoc[Resiliência SPI] — escolha PG/Firebird/Redis na mesma interface
 
 IMPORTANT: `SqlTemplate` exige `.sql` como `EmbeddedResource` — ver xref:data-sqltemplate.adoc[SqlTemplate — Setup].

@@ -2,16 +2,16 @@
 include::partial$_attributes.adoc[]
 :icons: font
 
-Sapata .NET não-invasiva para apps que precisam de EventBus, Data Layer dinâmico e Migrations SQL puras sem carregar um framework pesado. Inspirado em Spring Boot auto-configuration + Rust features + PostgreSQL docs (SQL puro).
+Infraestrutura pequena e pragmática para aplicações .NET que precisam de EventBus, SQL dinâmico, migrations e componentes de infraestrutura sem adotar um framework inteiro.
 
-Filosofia: **TryAdd / SPI**. O core não obriga nada. Se não registrar `IOutboxStore`, não existe outbox. Se não registrar `IMigrationJournal`, usa `DefaultMigrationJournal` SQL-97. Quem precisa pluga fora do `src/`.
+Filosofia: **TryAdd / SPI**. O core não obriga nada. Se não registrar `IOutboxStore`, não existe outbox. Se não registrar `IMigrationJournal`, usa `DefaultMigrationJournal` SQL-97.
 
 == O que resolve
 
 *   **Desacoplamento sem broker** — `EventBus` in-process `Channel<T>` bounded
 *   **Queries dinâmicas sem ORM** — `SqlTemplate` 11 tags + Dapper agnóstico
 *   **Migrations embarcadas** — `AddMigrations(Assembly)` com `*.sql` como `EmbeddedResource`, SQL-97
-*   **Legado Firebird/dbf + PostgreSQL** — mesmo binário, `IDbConnectionFactory` agnóstico
+*   **Multi-banco** — PostgreSQL, Firebird, MySQL, SQLite — mesmo binário, `IDbConnectionFactory` agnóstico
 *   **Resiliência opcional** — `IIdempotencyStore`/`IOutboxStore` via `TryAdd`
 
 == Mapa
@@ -26,4 +26,4 @@ Filosofia: **TryAdd / SPI**. O core não obriga nada. Se não registrar `IOutbox
 *   xref:resiliencia-spi.adoc[Resiliência SPI] — como plugar
 *   xref:observability.adoc[OTel & Health] — /health + traces
 
-NOTE: Framework é genérico, sem domínio — sem `samples/` compilável. Tudo via SPI.
+NOTE: Framework é genérico, sem domínio — tudo via SPI.
