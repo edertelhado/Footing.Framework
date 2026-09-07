@@ -1,7 +1,7 @@
 = Recipe — Bulk Insert
 include::partial$_attributes.adoc[]
 
-Veja xref:sql-batch.adoc[SqlBatch] completo — este é resumo copy-paste.
+Veja xref:data-sqlbatch.adoc[SqlBatch] completo — este é resumo copy-paste.
 
 [source,csharp]
 ----

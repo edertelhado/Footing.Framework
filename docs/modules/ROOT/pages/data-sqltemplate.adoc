@@ -1,6 +1,7 @@
 = SqlTemplate
 include::partial$_attributes.adoc[]
 :icons: font
+:attribute-missing: skip
 
 SQL dinâmico com Dapper, agnóstico a banco. `11 GeneratedRegex` source-gen AOT, pipeline `BIND → INCLUDE → TRIM/SET → WHERE → IFDEFINED → IF(and) → IN → CHOOSE → BETWEEN`. Inspirado MyBatis, mas SQL puro.
 
