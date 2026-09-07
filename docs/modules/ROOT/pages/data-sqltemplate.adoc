@@ -3,7 +3,7 @@ include::partial$_attributes.adoc[]
 :icons: font
 :attribute-missing: skip
 
-SQL dinâmico com Dapper, agnóstico a banco. Pipeline de processamento com tags `{IF}`, `{WHERE}`, `{IN}`, `{CHOOSE}`, `{BETWEEN}`, `{TRIM}`, `{SET}`, `{INCLUDE}`, `{BIND}`, `{IFDEFINED}`. Renderiza SQL e parâmetros separados — parâmetros nunca entram no string.
+Template engine leve para SQL dinâmico com Dapper e sem dependência de um banco específico. Permite adicionar ou remover trechos da consulta em tempo de execução com tags como `{IF}`, `{WHERE}`, `{IN}`, `{CHOOSE}`, `{BETWEEN}`, `{TRIM}`, `{SET}`, `{INCLUDE}`, `{BIND}` e `{IFDEFINED}`. O resultado é sempre separado em SQL + parâmetros, preservando queries legíveis e evitando concatenação de valores na instrução.
 
 == Tags suportadas
 
