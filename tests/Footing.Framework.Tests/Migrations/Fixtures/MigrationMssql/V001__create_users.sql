@@ -1,0 +1,13 @@
+CREATE TABLE users (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    name NVARCHAR(200) NOT NULL,
+    email NVARCHAR(200) NOT NULL,
+    created_at DATETIME2 DEFAULT GETDATE(),
+    metadata NVARCHAR(MAX)
+);
+CREATE TABLE products (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    name NVARCHAR(200) NOT NULL,
+    price DECIMAL(10,2),
+    metadata NVARCHAR(MAX)
+);

@@ -1,0 +1,16 @@
+= Recipe — Bulk Insert
+include::partial$_attributes.adoc[]
+
+Veja xref:sql-batch.adoc[SqlBatch] completo — este é resumo copy-paste.
+
+[source,csharp]
+----
+await using var uow = new UnitOfWork(factory);
+await uow.BeginAsync();
+var n = await SqlBatch.InsertBatchAsync(uow, "Users", users, batchSize: 500);
+await uow.CommitAsync();
+
+var (sql, parms) = SqlBatch.BuildBatchInsert("Users", users, columnsOverride: "Name,Age,Email");
+----
+
+Chunk `500` com auto-ajuste `2100/colCount` para SQL Server. Agnostic PG/MySQL/SQLite.

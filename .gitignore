@@ -1,0 +1,28 @@
+# .NET
+bin/
+obj/
+artifacts/
+[Oo]bj/
+[Bb]in/
+*.nupkg
+*.snupkg
+*.user
+*.suo
+.vs/
+TestResults/
+*.log
+
+# Rider
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local issues (PO Sueli — não commitar, apenas local)
+issues/
+.issues/
+.opencode/
+BenchmarkDotNet.Artifacts/
+build/
+docs/build/

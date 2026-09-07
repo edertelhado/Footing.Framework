@@ -1,0 +1,20 @@
+{
+  "Footing": {
+    "Test": {
+      "Provider": "sqlite",
+      "ConnectionString": "Data Source=file:memdb?mode=memory&cache=shared"
+    }
+  },
+  "ConnectionStrings": {
+    "FootingTest": ""
+  },
+  // Exemplos por provider (infra agnóstica — docker/podman/lxc/bare metal/AWS):
+  // sqlite (default, sem env var): Data Source=file:memdb?mode=memory&cache=shared
+  // pg:     "Host=localhost;Port=5432;Database=footing_test;Username=postgres;Password=postgres"
+  // mssql:  "Server=localhost;Database=footing_test;User Id=sa;Password=YourStrong!Passw0rd;TrustServerCertificate=true"
+  // mysql:  "Server=localhost;Database=footing_test;Uid=root;Pwd=***"
+  // hana Could Have: "Driver={HDBODBC};ServerNode=hana.prod:39013;Uid=SYSTEM;Pwd=***"
+  // Uso: cp appsettings.test.json.example appsettings.test.json (gitignored) ou FOOTING_TEST_PROVIDER + FOOTING_TEST_CONN_STRING env var (precedência env var)
+  "TestProvider": "sqlite",
+  "TestConnectionString": ""
+}

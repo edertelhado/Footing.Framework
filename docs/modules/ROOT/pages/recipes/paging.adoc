@@ -1,0 +1,42 @@
+= Recipe — Paging (dialect no .sql, não no framework)
+include::partial$_attributes.adoc[]
+
+`PagedResult<T>` Won't (GLOBAL_RULES) — precisa dialect `LIMIT vs TOP/FETCH vs FIRST SKIP`. App faz `.sql` via `SqlTemplate`.
+
+PostgreSQL:
+
+[source,sql]
+----
+SELECT u.Id, u.Name FROM Users u
+{WHERE} {IF:Search} AND u.Name ILIKE @Search {END} {ENDWHERE}
+ORDER BY u.Name
+LIMIT @Size OFFSET @Offset
+----
+
+SQL Server:
+
+[source,sql]
+----
+SELECT u.Id, u.Name FROM Users u
+{WHERE} {IF:Search} AND u.Name LIKE @Search {END} {ENDWHERE}
+ORDER BY u.Name
+OFFSET @Offset ROWS FETCH NEXT @Size ROWS ONLY
+----
+
+Firebird:
+
+[source,sql]
+----
+SELECT FIRST @Size SKIP @Offset u.Id, u.Name FROM Users u
+{WHERE} {IF:Search} AND u.Name LIKE @Search {END} {ENDWHERE}
+ORDER BY u.Name
+----
+
+App-side DTO simples 5 LOC:
+
+[source,csharp]
+----
+public sealed record Paginacao<T>(IReadOnlyList<T> Items, int Total, int Page, int Size);
+----
+
+Sem `QueryPagedAsync` no framework — agnóstico.

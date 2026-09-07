@@ -1,0 +1,21 @@
+site:
+  title: Footing.Framework
+  url: https://etelhado.github.io/Footing.Framework
+content:
+  sources:
+    - url: .
+      branches: HEAD
+      start_path: docs
+ui:
+  bundle:
+    url: https://gitlab.com/antora/antora-ui-default/-/jobs/artifacts/HEAD/raw/build/ui-bundle.zip?job=bundle-stable
+    snapshot: true
+output:
+  dir: docs/build/site
+runtime:
+  fetch: true
+asciidoc:
+  attributes:
+    icons: font
+    source-highlighter: highlight.js
+    sectanchors: true

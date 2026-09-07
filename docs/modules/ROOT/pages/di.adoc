@@ -1,0 +1,122 @@
+= DI & Lifecycle — Auto-Scan Walk
+include::partial$_attributes.adoc[]
+:icons: font
+
+DI determinística sem Source Generator (SG Won't print-26). Walk reflexivo `50ms <3% startup` para monólito <500 types — SG 2.5 SP adiado até pivô microserviços CONFIRMADO.
+
+== AddDependencyWalk — Auto-Scan
+
+[source,csharp]
+----
+// Program.cs — assemblies explícitos, determinístico
+services.AddDependencyWalk("MeuProjeto", configuration, typeof(Program).Assembly);
+services.AddDependencyWalk("MeuProjeto", configuration, typeof(Program).Assembly, typeof(UserRepository).Assembly);
+----
+
+> Removido 3.0.0: `AddDependencyWalkAuto` (`[Obsolete]` desde `0.3.0-alpha`) → use `AddDependencyWalk` com assemblies explícitos.
+
+[source,mermaid]
+----
+flowchart TD
+  Scan[\"Assembly.GetTypes() + StartsWith(rootNamespace)\"] --> Filter[\"Where Has [Injectable]/[Service]/[Repository]\n+ try/catch ReflectionTypeLoadException\"]
+  Filter --> Lifetime[\"Map Attribute → Lifetime\n[Service]=Transient  [Repository]=Scoped  [Injectable(Lifetime)]\"]
+  Lifetime --> Register[\"services.Add(ServiceDescriptor)\nActivatorUtilities.CreateInstance\"]
+  Register --> Listeners[\"ResolverExtensions.RegisterEventListeners\nChannel dedup ConcurrentDictionary\"]
+  Register --> Lifecycle[\"PostConstruct → PreDestroy\nDisposable + IAsyncDisposable\"]
+----
+
+== Atributos
+
+[cols="1,1,2"]
+|===
+| Atributo | Lifetime padrão | Uso
+
+| `[Injectable(Lifetime)]`
+| obrigatório informar
+| Qualquer classe que precise de DI
+
+| `[Service]`
+| Transient
+| Serviços sem estado
+
+| `[Repository]`
+| Scoped
+| Acesso a dados
+|===
+
+[source,csharp]
+----
+[Service]
+public class UserService(IUserRepository repo) { }
+
+[Repository]
+public class UserRepository(IDbConnectionFactory f) { }
+
+[Injectable(InjectableLifetime.Singleton)]
+public class CacheManager { }
+
+[Injectable(InjectableLifetime.Scoped)]
+public class TenantScope { }
+----
+
+== ResolverExtensions
+
+* Cria via `ActivatorUtilities.CreateInstance` (resolve deps DI)
+* Injeta `[InjectConfig]` de `IConfiguration`
+* Executa `[PostConstruct]` (sync/async)
+* Registra `[EventListener]` no EventBus (dedup `ConcurrentDictionary<(Type,MethodInfo),bool>`)
+* `DiSmokeTests` 2 testes agnósticos `GetServices<IRepo>.Count==1 + ValidateScopes` — detecta assembly esquecido sem SG.
+
+== Lifecycle — PostConstruct / PreDestroy
+
+[source,csharp]
+----
+public class EmailService
+{
+    private SmtpClient? _client;
+
+    [PostConstruct]
+    public void Initialize() => _client = new SmtpClient("smtp.example.com");
+
+    [PostConstruct]
+    public async Task InitializeAsync() => _client = await CreateClientAsync();
+
+    [PreDestroy]
+    public void Cleanup() => _client?.Dispose();
+
+    // async sem deadlock: LifecycleProxy.DisposeCore usa Task.Run(async()=>await task).GetAwaiter().GetResult()
+}
+----
+
+Suporta `void`, `Task`, `ValueTask` — múltiplos `[PostConstruct]` invalido (`InvalidOperationException`).
+
+== Walk vs Source Generator — decisão Won't
+
+[cols="1,1,2"]
+|===
+| Critério | Walk reflexivo | SG Roslyn (Won't)
+
+| Startup | `~50ms` para 300 types (`<3%` de `~1.5s` boot) | `~5ms` (economia `45ms` irrelevante)
+| Tipos | `<500` monólito | `>500` + SLO `<50ms` + `PublishAot` = gatilho SG
+| Build | 0 analyzer | `Generators 310L + Tests 3 + docs/poc 35K` removível `rm -rf`
+| Custo | `0` | `2.5 SP` (1.5+0.5+0.25+0.25)
+| Decisão | **Walk definitivo 3.x e 4.x** | Só se pivô microserviços CONFIRMADO (todos 4 gatilhos)
+|===
+
+Ver `MIGRATION.md §8.11` + `print-26.md` SG Won't definitivo. Tag `poc/di-source-generator-archived` guarda POC.
+
+== Config — InjectConfig
+
+[source,csharp]
+----
+public class EmailSettings
+{
+    [InjectConfig("Smtp:Host")]
+    public string? Host { get; set; }
+    [InjectConfig("Smtp:Port")]
+    public int Port { get; set; }
+}
+// preenchido via IConfiguration automaticamente pelo ResolverExtensions
+----
+
+TIP: Para testes, use `ResolverExtensions` direto sem Host — ver `DiSmokeTests.cs`.

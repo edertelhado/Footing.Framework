@@ -1,0 +1,52 @@
+= Footing.Framework
+include::partial$_attributes.adoc[]
+:icons: font
+:source-highlighter: highlight.js
+
+Microframework base *.NET* — a **sapata** do projeto. EventBus in-process + Data Layer (SqlTemplate + Dapper) + DI auto-scan + Lifecycle + Config. *2878 LOC <3.5K, {tests} testes, {regex} regex, pack {pack}, TWE true, 0 Npgsql/src*.
+
+[.badges]
+image:https://img.shields.io/badge/version-{footing-version}-blue[Version {footing-version}] image:https://img.shields.io/badge/tests-{tests}%20passed-brightgreen[Tests {tests}] image:https://img.shields.io/badge/regex-{regex}-orange[Regex {regex}] image:https://img.shields.io/badge/pack-{pack}-yellow[Pack {pack}] image:https://img.shields.io/badge/docs-antora-blueviolet[Docs Antora]
+
+[cols="1,1"]
+|===
+| Topo-funil (avaliação 10min) | Fundo-funil (template)
+| Leia este portal versionado `v{footing-version}` — quickstart copy-paste, 11 tags em 1 query, SPI tabs PG/Firebird/dbf | `dotnet new` futuro só com gatilho BUY >30% — ver `outbox-idempotency.adoc`
+|===
+
+== Arquitetura
+
+[source,mermaid]
+----
+flowchart LR
+  Controller --> Service["Service [Service]"]
+  Service --> Repo["Repo [Repository]"]
+  Repo --> Dapper
+  Dapper --> Factory["IDbConnectionFactory"]
+  Factory --> DB[("PG / Firebird / dbf\n(via SPI)")]
+  Service --> EB["EventBus\nChannel bounded 100\nFullMode.Wait"]
+  EB --> Handler["IEventHandler<T>\n[EventListener] Priority"]
+  Service --> Outbox["OutboxProcessor\npoll 2s Batch 100"]
+  Outbox --> Store["IOutboxStore\nNpgsql/Firebird/dbf"]
+  Service --> Batch["SqlBatch\nVALUES chunked 500/2100"]
+  Migrations["MigrationRunner\nY/N CHAR(1)"] --> Factory
+  OTel["ActivitySource\nFooting.Framework"] -.-> EB & Dapper & Batch
+  Health["/health\nDbHealthCheck + EventBusHealthCheck"] -.-> Factory & EB
+----
+
+*Princípios:* agnóstico DB (GLOBAL_RULES 59L), SPI `IOutboxStore/IIdempotencyStore` 0 deps, `<3.5K LOC`, `11 GeneratedRegex` source-gen AOT, fail-fast estrutura vs fail-safe dados.
+
+== Onde ir
+
+* xref:quickstart.adoc[Quickstart — 3 comandos] — `dotnet add package` + `AddFooting` + `curl`
+* xref:sql-template.adoc[SqlTemplate 11 tags] — tabela + snippet `Find.sql` 11 tags + `and/length/IFDEFINED/BIND/INCLUDE`
+* xref:migrations.adoc[Migrations Y/N] — `CHAR(1) CHECK Y/N` + VersionParser + Checksum SHA256
+* xref:outbox-idempotency.adoc[Outbox & Idempotency SPI] — tabs PG/Firebird/dbf
+* xref:otel-health.adoc[OTel & Health] — `FootingActivitySource` + `/health`
+* xref:configuration.adoc[Compliance] — `grep Npgsql==0` gate + TWE
+
+== Versionamento Antora
+
+`antora.yml` `version: 3.4` travado por tag `v3.4.2` — este portal é snapshot `3.4.2`. `v3.5.0` revisado 0.7 SP `UseTransaction Won't definitivo` (DDL transacional agnóstico não suportado, mesmo com BUY — `MSSQL` tolera mas não recomenda, `Firebird/dbf/SQLite` não permitem DDL em transação; `AutoTransaction=false` agnóstico, `BEGIN/COMMIT` no `.sql` se `PG`; `throw NotSupportedException` descritivo — ver xref:migrations.adoc[migrations] e `GLOBAL_RULES §1`).
+
+NOTE: Framework é genérico, sem domínio — não contém `Aluno/Matrícula` nem `samples/` compilável. Tudo via SPI.

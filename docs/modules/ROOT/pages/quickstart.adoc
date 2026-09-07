@@ -1,0 +1,88 @@
+= Quickstart — 3 comandos
+include::partial$_attributes.adoc[]
+:icons: font
+
+Copie e cole. Sem `samples/` compilável — portal é a porta de entrada.
+
+== 1) Instalar
+
+[source,bash]
+----
+dotnet add package Footing.Framework --version {footing-version}
+# ou nuget: <PackageReference Include="Footing.Framework" Version="{footing-version}" />
+----
+
+== 2) Registrar no Host
+
+[source,csharp]
+----
+// Program.cs — net10.0
+using Footing.Framework.DI;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// DI auto-scan determinístico — assemblies explícitos
+builder.Services.AddDependencyWalk("MeuProjeto", builder.Configuration, typeof(Program).Assembly);
+builder.Services.AddSingleton<IDbConnectionFactory>(new NpgsqlConnectionFactory(builder.Configuration.GetConnectionString("Default")!));
+
+// EventBus Channel bounded 100
+builder.Services.AddEventBus(o => { o.WorkerCount = 4; o.Capacity = 100; o.DrainOnStop = true; });
+
+// Health + OTel
+builder.Services.AddFootingHealthChecks();
+builder.Services.AddOpenTelemetry().WithTracing(b => b.AddSource("Footing.Framework"));
+
+var app = builder.Build();
+app.MapHealthChecks("/health");
+app.Run();
+
+// Infra concreta (app-side, não pack) — exemplo PostgreSQL
+public sealed class NpgsqlConnectionFactory(string cs) : IDbConnectionFactory
+{
+    public System.Data.IDbConnection CreateConnection() => new Npgsql.NpgsqlConnection(cs);
+}
+----
+
+TIP: Agnosticismo — troque `NpgsqlConnectionFactory` por `FbConnectionFactory` ou `SqliteInMemoryFactory` sem tocar `src/`.
+
+== 3) Usar
+
+[source,csharp]
+----
+// Repository — SqlTemplateLoader + Dapper direto (sem wrapper que esconde API)
+public class UserRepository(IDbConnectionFactory f)
+{
+    public async Task<IEnumerable<User>> Search(string? name, string? status)
+    {
+        using var conn = f.CreateConnection();
+        var tpl = SqlTemplateLoader.For<UserRepository>("Sql.Users.Search");
+        var result = tpl.Render(new { Name = name, Status = status });
+        return await conn.QueryAsync<User>(result.Sql, result.Parameters);
+    }
+}
+
+// Controller — Minimal API + Idempotency SPI
+app.MapPost("/users", async (CreateUserDto dto, IIdempotencyStore store, EventBus bus) =>
+{
+    var user = await store.GetOrCreateAsync(dto.IdempotencyKey, () => service.Create(dto), TimeSpan.FromHours(24));
+    await bus.PublishAsync(new UserCreatedEvent(user.Id));
+    return Results.Created($"/users/{user.Id}", user);
+});
+----
+
+Teste sem DB real:
+
+[source,bash]
+----
+dotnet test -c Release # 473 Passed
+curl http://localhost:5000/health # {"status":"Healthy","checks":[{"name":"db"},{"name":"eventbus"}]}
+curl -X POST http://localhost:5000/users -H "Idempotency-Key: k1" -d '{"name":"eder"}'
+----
+
+== Próximos passos
+
+* xref:sql-template.adoc[SqlTemplate 11 tags] — copie `Sql/Users/Search.sql` com `\{WHERE}\{IF}\{IN}\{CHOOSE}`
+* xref:migrations.adoc[Migrations Y/N] — `dotnet run -- migrate` com `__migrations CHAR(1) Y/N`
+* xref:outbox-idempotency.adoc[Outbox SPI] — escolha PG/Firebird/dbf na mesma interface
+
+IMPORTANT: `SqlTemplate` exige `.sql` como `EmbeddedResource` — ver xref:sql-template.adoc[SqlTemplate — Setup].

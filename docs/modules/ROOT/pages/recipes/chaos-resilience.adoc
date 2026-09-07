@@ -1,0 +1,31 @@
+= Recipe — Chaos & Resilience
+include::partial$_attributes.adoc[]
+
+18 testes `M1-M6` + `sqlite:memory` + `FsCheck 200 random`.
+
+== sqlite:memory factory (teste sem PG)
+
+[source,csharp]
+----
+public sealed class SqliteInMemoryFactory : IDbConnectionFactory
+{
+    private readonly string _cs = "Data Source=:memory:";
+    public IDbConnection CreateConnection() => new Microsoft.Data.Sqlite.SqliteConnection(_cs);
+}
+----
+
+== FsCheck 200 random (and/length/BETWEEN/INCLUDE/Batch)
+
+[source,csharp]
+----
+// Prop_And_ShouldNeverThrow 40 random
+Prop.ForAll<string,string>((a,b) => {
+    var tpl = SqlTemplate.Parse("{IF:Name != null and Name != ''} AND x {END}");
+    var r = tpl.Render(new { Name=a, Extra=b });
+    return r.Sql != null;
+}).QuickCheckThrowOnFailure();
+----
+
+== Gilson 80 chaos (C1-C9+and/BIND/INCLUDE/TRIM/SET/IFDEFINED/unicode)
+
+`tests/Footing.Framework.Tests/Chaos/GilsonChaosTests.cs` 80 teorias — prova falha>feliz.

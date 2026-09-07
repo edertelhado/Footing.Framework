@@ -1,0 +1,7 @@
+*.sql text eol=lf
+*.cs text eol=lf
+# Preserve CRLF for V001 fixtures to test MigrationChecksum normalization (CRLF vs LF)
+tests/Footing.Framework.Tests/Migrations/Fixtures/MigrationSqlite/V001__create_users.sql text eol=crlf
+tests/Footing.Framework.Tests/Migrations/Fixtures/MigrationPg/V001__create_users.sql text eol=crlf
+tests/Footing.Framework.Tests/Migrations/Fixtures/MigrationMssql/V001__create_users.sql text eol=crlf
+tests/Footing.Framework.Tests/Migrations/Fixtures/MigrationMysql/V001__create_users.sql text eol=crlf

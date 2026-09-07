@@ -1,0 +1,6 @@
+name: footing-framework
+title: Footing.Framework
+version: '3.5'
+display_version: '3.5.1'
+nav:
+  - modules/ROOT/nav.adoc

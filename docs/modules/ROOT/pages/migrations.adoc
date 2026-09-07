@@ -1,0 +1,194 @@
+= Migrations — SPI carteiro Y/N
+include::partial$_attributes.adoc[]
+:icons: font
+
+SPI tripartite agnóstico — app fornece `IDbConnectionFactory` + journal via Dapper. `Y/N CHAR(1) CHECK (success IN ('Y','N'))` vence `BOOLEAN/BIT/INTEGER` (PG `CHAR(1)`, MSSQL `CHAR(1)`, FB `CHAR(1)`, dbf `C(1)`). `BoolCharYNTypeHandler` `bool→'Y'/'N'` `AnsiStringFixedLength Size=1`.
+
+== DDL agnóstico
+
+[source,sql]
+----
+-- docs/examples/Migrations/DDL/__migrations.sql
+CREATE TABLE __migrations (
+  version      VARCHAR(50)  NOT NULL PRIMARY KEY,
+  script_name  VARCHAR(200) NOT NULL,
+  checksum     VARCHAR(64)  NOT NULL, -- SHA256 64 hex
+  installed_on TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  execution_time_ms BIGINT NOT NULL DEFAULT 0,
+  success      CHAR(1)      NOT NULL CHECK (success IN ('Y','N')),
+  error_message VARCHAR(4000),
+  type         VARCHAR(20)  NOT NULL -- VERSIONED / REPEATABLE / BASELINE
+);
+-- Índices: SELECT * WHERE success='Y' / 'N' bloqueia / DELETE WHERE success='N' repair
+----
+
+`PG: CHAR(1)` + `MSSQL: CHAR(1)` + `FB: CHAR(1)` + `dbf: C(1)` — mesmo DDL, 0 dialect no `src/`.
+
+== SPI
+
+[source,csharp]
+----
+public interface IMigrationJournal
+{
+    Task EnsureHistoryTableAsync(CancellationToken ct = default);
+    Task<IReadOnlyList<string>> GetAppliedVersionsAsync(CancellationToken ct = default);
+    Task<string?> GetChecksumAsync(string version, CancellationToken ct = default);
+    Task<bool> HasAppliedAsync(string version, CancellationToken ct = default);
+    Task MarkAppliedAsync(MigrationInfo m, string checksum, long ms, string successYN, string? error, CancellationToken ct = default);
+    Task<IReadOnlyList<MigrationStatus>> GetInfoAsync(CancellationToken ct = default);
+    Task RepairAsync(CancellationToken ct = default); // DELETE WHERE success='N'
+    Task BaselineAsync(string version = "0", CancellationToken ct = default);
+    Task<IReadOnlyList<string>> GetFailedVersionsAsync(CancellationToken ct = default);
+}
+
+public interface IMigrationScriptProvider
+{
+    IAsyncEnumerable<MigrationInfo> GetScriptsAsync(CancellationToken ct = default);
+    // FileSystem: new FileSystemMigrationScriptProvider("Migrations")
+    // EmbeddedResource: new EmbeddedResourceMigrationScriptProvider(assembly, "MyApp.Migrations")
+}
+
+public interface IMigrationRunner
+{
+    Task<MigrationResult> MigrateAsync(CancellationToken ct = default);
+    Task ValidateAsync(CancellationToken ct = default); // drift checksum
+    Task<IReadOnlyList<MigrationStatus>> InfoAsync(CancellationToken ct = default);
+    Task RepairAsync(CancellationToken ct = default);
+    Task BaselineAsync(string v = "0", CancellationToken ct = default);
+    Task<string> GenerateScriptAsync(CancellationToken ct = default); // dry-run DBA
+}
+
+public sealed record MigrationInfo(string Version, string ScriptName, string Sql, string Checksum, string Type);
+----
+
+== VersionParser sem regex (11→11)
+
+[source,csharp]
+----
+MigrationVersionParser.TryParse("V1__create.sql", out var m);     // Version=1, Type=VERSIONED
+MigrationVersionParser.TryParse("V1_0_1__fix.sql", out var m);    // Version=1.0.1, _→., Type=VERSIONED
+MigrationVersionParser.TryParse("R__views.sql", out var r);       // Type=REPEATABLE, checksum diff → reexecuta
+MigrationVersionParser.TryParse("R001__seed.sql", out var r);     // Type=REPEATABLE
+MigrationVersionParser.TryParse("001__baseline.sql", out var b);  // Type=BASELINE
+// sem GeneratedRegex — IndexOf "__"
+----
+
+== Runner carteiro — 60 LOC agnóstico
+
+[source,csharp]
+----
+var runner = new MigrationRunner(journal, new FileSystemMigrationScriptProvider("Migrations"), factory,
+    new MigrationOptions{ Placeholders = new Dictionary<string,string>{ ["schema"]="public"} });
+
+await runner.MigrateAsync();             // bloqueia se success='N' pendente, catch → Insert N + throw MigrationException
+await runner.ValidateAsync();            // drift SHA256
+await runner.RepairAsync();              // DELETE WHERE success='N'
+await runner.BaselineAsync("0");
+var dry = await runner.GenerateScriptAsync(); // sem executar, DBA revisa
+----
+
+* Placeholders `pass:[{{schema}}]` via `Dictionary Replace` — sem regex.
+* Checksum `MigrationChecksum.Compute(sql)` SHA256 64 hex — drift fail-fast `MigrationException`.
+* `ExecuteRawSql` via `IDbCommand` puro (`factory.CreateConnection().CreateCommand()`) — sem `Npgsql`/`OleDb` no `src/`.
+
+[source,mermaid]
+----
+flowchart LR
+  Scripts[\"FileSystem / EmbeddedResource\nGetScriptsAsync()\"] --> Sort[\"OrderBy Version Ordinal\"]
+  Sort --> Check[\"GetFailedVersions → throw se N pendente\"]
+  Check --> Loop[\"ForEach script\"]
+  Loop --> Repeat{{\"REPEATABLE?\"}}
+  Repeat -->|yes checksum diff| Exec[\"ApplyPlaceholders → ExecuteRawSql\n(IDbCommand)\"] --> JournalY[\"MarkApplied Y\"]
+  Repeat -->|checksum same| Skip[\"skip\"]
+  Loop --> Applied{{\"applied?\"}}
+  Applied -->|no| Exec2[\"ExecuteRawSql\"] --> JournalY2
+  Exec -->|catch| JournalN[\"MarkApplied N + throw MigrationException\"]
+----
+
+== TypeHandler Y/N
+
+[source,csharp]
+----
+SqlMapper.AddTypeHandler(new BoolCharYNTypeHandler()); // bool ↔ 'Y'/'N' Dapper
+public class BoolCharYNTypeHandler : SqlMapper.TypeHandler<bool>
+{
+    public override bool Parse(object value) => value?.ToString() == "Y";
+    public override void SetValue(IDbDataParameter p, bool v) { p.DbType = DbType.AnsiStringFixedLength; p.Size = 1; p.Value = v ? "Y" : "N"; }
+}
+----
+
+== UseTransaction — Won't definitivo (DDL transacional agnóstico não suportado)
+
+**Won't definitivo, sem BUY:** `MigrationOptions.UseTransaction = true` / `AutoTransaction = true` (DDL transacional agnóstico) **não é suportado, mesmo com BUY** — `MSSQL` tolera mas não recomenda, `Firebird/dbf/SQLite` não permitem `DDL` em transação. Framework mantém `AutoTransaction=false` agnóstico; usuário controla `BEGIN/COMMIT` no `.sql` se `PG` quiser.
+
+[source,sql]
+----
+-- PG se quiser atomicidade — controle no .sql, não no framework
+BEGIN;
+CREATE TABLE foo (...);
+COMMIT;
+----
+
+[source,csharp]
+----
+// Correto — agnóstico, único suportado
+var runner = new MigrationRunner(journal, new FileSystemMigrationScriptProvider("Migrations"), factory,
+    new MigrationOptions{ Placeholders = new Dictionary<string,string>{ ["schema"]="public"} });
+
+// Won't — throws NotSupportedException (agnostic DDL not supported)
+var runnerTx = new MigrationRunner(journal, scripts, factory, new MigrationOptions{ UseTransaction = true });
+// throw NotSupportedException("DDL transactions are not supported. Use BEGIN/COMMIT inside the .sql script if your database supports transactional DDL.")
+----
+
+[source,csharp]
+----
+// src/Footing.Framework/Migrations/MigrationOptions.cs — Won't with throw (comments/messages in English, no .md reference)
+public sealed class MigrationOptions
+{
+    public Dictionary<string,string> Placeholders { get; set; } = new();
+    private bool _useTransaction;
+    /// <summary>
+    /// Definitive Won't — agnostic transactional DDL is not supported, even with BUY.
+    /// Keeps AutoTransaction=false agnostic; caller controls BEGIN/COMMIT inside the .sql script if needed.
+    /// Setter throws NotSupportedException when set to true.
+    /// </summary>
+    public bool UseTransaction
+    {
+        get => _useTransaction;
+        set
+        {
+            if (value) throw new NotSupportedException("DDL transactions are not supported. Use BEGIN/COMMIT inside the .sql script if your database supports transactional DDL.");
+            _useTransaction = value;
+        }
+    }
+}
+// src/Footing.Framework/Migrations/MigrationRunner.cs — guard without driver check
+public MigrationRunner(..., MigrationOptions? options = null)
+{
+    _options = options ?? new();
+    if (_options.UseTransaction) throw new NotSupportedException("DDL transactions are not supported. Use BEGIN/COMMIT inside the .sql script if your database supports transactional DDL.");
+}
+public async Task<MigrationResult> MigrateAsync(CancellationToken ct = default)
+{
+    if (_options.UseTransaction) throw new NotSupportedException("DDL transactions are not supported. Use BEGIN/COMMIT inside the .sql script if your database supports transactional DDL.");
+    // ...
+}
+----
+
+WARNING: `UseTransaction` permanece `false` default e `true` sempre lança `NotSupportedException` em Inglês — sem `if (driver==pg)`, apenas `throw` direto agnóstico e sem referência a arquivo `.md` em runtime. `MSSQL` tolera mas não recomenda `DDL` transacional (lock longo), `Firebird/dbf` `DDL auto-commit` ignora transação. Por isso **Won't definitivo, sem BUY** — documentação externa em Português explica o racional; mensagem de erro em runtime permanece em Inglês.
+
+== Cli
+
+[source,bash]
+----
+dotnet run -- migrate            # MigrateAsync
+dotnet run -- migrate:validate   # ValidateAsync
+dotnet run -- migrate:repair     # RepairAsync
+dotnet run -- migrate:generate   # dry-run → stdout revisa DBA
+dotnet run -- migrate:baseline 0 # BaselineAsync
+----
+
+== Ver também
+
+* xref:sql-template.adoc[SqlTemplate] — `GenerateScriptAsync` usa `ApplyPlaceholders`
+* `docs/examples/Migrations/DDL/__migrations.sql` — DDL completo

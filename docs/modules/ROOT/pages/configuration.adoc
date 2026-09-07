@@ -1,0 +1,127 @@
+= Configuration & Compliance — 59L agnóstico
+include::partial$_attributes.adoc[]
+:icons: font
+
+Lifecycle + InjectConfig + GLOBAL_RULES 59L (agnóstico DB, SPI, Tese microframework).
+
+== InjectConfig
+
+[source,csharp]
+----
+public class EmailSettings
+{
+    [InjectConfig("Smtp:Host")]
+    public string? Host { get; set; }
+
+    [InjectConfig("Smtp:Port")]
+    public int Port { get; set; }
+
+    [InjectConfig("Smtp:User")]
+    public string? User { get; set; }
+}
+
+// appsettings.json
+// { "Smtp": { "Host": "smtp.example.com", "Port": 587 } }
+
+// ResolverExtensions injeta via IConfiguration automaticamente após ActivatorUtilities.CreateInstance
+----
+
+== Lifecycle PostConstruct / PreDestroy
+
+Ver xref:di.adoc#_lifecycle_postconstruct_predestroy[DI — Lifecycle]. `PostConstruct` sync/async + `PreDestroy` `DisposeCore` `Task.Run` sem deadlock.
+
+== GLOBAL_RULES 59L — checklist PR
+
+[cols="1,3,1"]
+|===
+| Regra | O que verificar | Gate
+
+| *Agnosticismo*
+| `src/` nunca `Npgsql/Firebird/OleDb/Redis/FluentValidation` — SPI `IDbConnectionFactory/IOutboxStore/IIdempotencyStore` 0 deps
+| `grep -r Npgsql\\|Redis\\|FluentValidation\\|Firebird\\|OleDb src/Footing.Framework --include="*.cs" --include="*.csproj" — 0`
+
+| *Linguagem*
+| Nunca reimplementar `Result<T>/PagedResult/IAuditable` — use `exception + ProblemDetails` idiomático C#
+| `grep -rn "class Result\\|PagedResult\\|IAuditable" src/ — 0`
+
+| *SPI*
+| Toda integração externa é `interface + Processor` sem impl concreta no `src/` que grude em 1 tech
+| `grep -n "interface I[A-Z]" src/ — IOutboxStore/IIdempotencyStore/IMigrationJournal/...`
+
+| *Tese <3.5K*
+| `<3.5K LOC src`, `≤11 regex`, fail-fast S1-S6 throw vs fail-safe dados
+| `find src -name "*.cs" ! -path "*/obj/*" \| xargs wc -l — <3500` + `grep -c GeneratedRegex`
+
+| *TWE true strict*
+| `TreatWarningsAsErrors true` sem `WarningsNotAsErrors`, `Deterministic true`, pack `78K`
+| `dotnet build -c Release -ContinuousIntegrationBuild=false — 0 erro`
+|===
+
+Gates completos:
+
+[source,bash]
+----
+# Agnosticismo
+grep -r Npgsql\|Redis\|FluentValidation\|Firebird\|OleDb src/Footing.Framework --include="*.cs" --include="*.csproj" && echo "FAIL agnostic" || echo "PASS"
+
+# Linguagem
+grep -rn "class Result\|PagedResult\|IAuditable" src/Footing.Framework --include="*.cs" && echo "FAIL linguagem" || echo "PASS"
+
+# SPI
+grep -n "interface I[A-Z]" src/Footing.Framework --include="*.cs" | head
+
+# Tamanho
+find src -name "*.cs" ! -path "*/obj/*" | xargs wc -l | tail -1
+grep -c GeneratedRegex src/Footing.Framework/Data/SqlTemplate.cs
+
+# Build & Test
+dotnet build -c Release -p:ContinuousIntegrationBuild=false 2>&1 | tail -3
+dotnet test -c Release 2>&1 | tail -3  # 473 Passed
+----
+
+Resultado v3.4.2: `PASS PASS 5 interfaces, 2878 LOC, 11 regex, 0 erro TWE, 473 Passed`.
+
+== Tese microframework
+
+* `<3.5K LOC` (`2878`) — genérico, sem domínio, `Dapper + Channel + SqlTemplate 11 regex`
+* `≤11 regex` source-gen AOT — não virar `Jinja2` (`and/or/!/()/user.name` Won't até BUY >30%)
+* `0 deps` DB — app fornece `NpgsqlConnectionFactory` fora pack
+* `TWE true` strict — sem `WarningsNotAsErrors` pós-3.0.0
+
+== Pack
+
+[source,bash]
+----
+dotnet pack -c Release -o /tmp/pack
+unzip -l /tmp/pack/Footing.Framework.3.4.2.nupkg | grep -E "README|LICENSE|icon.png"
+# README+LICENSE+icon.png, Deterministic true, PublishRepositoryUrl true, snupkg
+----
+
+== Migration policy
+
+Breaking só delete `Obsolete` (SemVer major `2.4.0 → 3.0.0` remove `TypeHandlerRegistry/AddDependencyWalkAuto`). `Result/Pagination/Audit` Won't nunca foi stable — delete sem bump.
+
+Ver `MIGRATION.md §8.13` promoção `3.4.1 → 3.4.2` stable sem código, §8.14 `3.5.0` revisado docs Antora + `UseTransaction Won't` definitivo.
+
+== Quando puxar SG (Won't definitivo print-26)
+
+SG 2.5 SP só se TODOS: pivô microserviços CONFIRMADO + `PublishAot` + SLO `<50ms` + types `>500` + `BUY >30%` (todos). Monólito atual não tem — Walk permanece `4.0`.
+
+== Quando puxar Sample (Could 3.5.1)
+
+Sample `Academia 13 features` rebaixado `Should → Could` com gatilho: `BUY >30% clones` OU `≥3 pedidos "tem sample?"` OU `demo venda live`. Até lá **não reavaliar**.
+
+== Auditoria @aud_carlos
+
+Gates docs Must 0.3:
+
+[source,bash]
+----
+npx antora antora-playbook.yml # → docs/build/site/index.html + 10 pages.html 0 erro
+ls docs/build/site/footing-framework/3.4/*.html | wc -l # 10+ pages
+dotnet test -c Release # 473 Passed
+find src -name "*.cs" ! -path "*/obj/*" | xargs wc -l # <3500
+grep -c GeneratedRegex src/Footing.Framework/Data/SqlTemplate.cs # 11
+dotnet pack -c Release -o /tmp/pack && unzip -p /tmp/pack/*.nupkg *.nuspec | grep -i Npgsql && echo FAIL || echo PASS
+----
+→ `≥9.0` libera `v3.4.3 docs` ou `v3.5.0` (S1 `UseTransaction` **Won't definitivo** — sem BUY, `throw NotSupportedException` agnóstico — ver `GLOBAL_RULES §1` e `migrations.md §6.3`).

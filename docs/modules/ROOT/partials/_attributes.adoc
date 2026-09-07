@@ -1,0 +1,8 @@
+:footing-version: 3.5.1
+:footing-next: 3.5.2
+:loc: 2897
+:tests: 477
+:regex: 11
+:pack: 78K
+:dotnet-version: net10.0
+:dapper-version: 2.1.72

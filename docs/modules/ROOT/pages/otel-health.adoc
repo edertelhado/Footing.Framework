@@ -1,0 +1,131 @@
+= Observabilidade — OTel + Health + Perf
+include::partial$_attributes.adoc[]
+:icons: font
+
+Diagnostics `FootingActivitySource` (OTel nativo `6 LOC`, 0 deps) + Health `FootingHealthCheck` (5 LOC, `HealthChecks.Abstractions`) — custo 0 sem listener (`HasListeners` guard).
+
+== Diagnostics — ActivitySource
+
+[source,csharp]
+----
+using Footing.Framework.Diagnostics;
+
+using var a1 = FootingActivitySource.StartSqlTemplateRender("SELECT * FROM Users {WHERE} ...");
+using var a2 = FootingActivitySource.StartEventBusPublish("UserCreatedEvent");
+using var a3 = FootingActivitySource.StartSqlBatch("Users", 100);
+using var a4 = FootingActivitySource.StartMigration("V1__create.sql");
+
+// ActivitySource("Footing.Framework", "3.4.2") — 0 overhead sem listener
+----
+
+Configure OTel:
+
+[source,csharp]
+----
+services.AddOpenTelemetry()
+    .WithTracing(b => b
+        .AddSource("Footing.Framework")
+        .AddAspNetCoreInstrumentation()
+        .AddOtlpExporter(o => o.Endpoint = new Uri("http://otel-collector:4317")));
+
+// Visualize no Grafana/Jaeger — tags: db.statement, event.type, batch.size
+----
+
+[source,mermaid]
+----
+flowchart LR
+  Render[\"SqlTemplate.Render\"] --> Act1[\"Activity Footing.Framework\nSqlTemplateRender 0 cost if no listener\"]
+  Publish[\"EventBus.Publish\"] --> Act2[\"EventBusPublish\"]
+  Batch[\"SqlBatch.InsertBatchAsync\"] --> Act3[\"SqlBatch tag batch.size\"]
+  Act1 & Act2 & Act3 --> OTel[\"OpenTelemetry Collector\"] --> Grafana[\"Grafana / Jaeger\"]
+----
+
+== Health — /health
+
+[source,csharp]
+----
+services.AddFootingHealthChecks(); // registra DbHealthCheck + EventBusHealthCheck
+app.MapHealthChecks("/health");
+
+// GET /health → {"status":"Healthy","results":{"db":"Healthy","eventbus":"Healthy"}}
+// GET /health?tags=db  → só db
+----
+
+Implementação (5 LOC):
+
+[source,csharp]
+----
+public sealed class DbHealthCheck(IDbConnectionFactory f) : IHealthCheck
+{
+    public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext ctx, CancellationToken ct = default)
+    {
+        using var conn = f.CreateConnection();
+        await ((System.Data.Common.DbConnection)conn).OpenAsync(ct);
+        return HealthCheckResult.Healthy("db reachable");
+    }
+}
+public sealed class EventBusHealthCheck(EventBus bus) : IHealthCheck
+{
+    public Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext ctx, CancellationToken ct = default)
+        => Task.FromResult(bus.IsRunning ? HealthCheckResult.Healthy("eventbus running") : HealthCheckResult.Unhealthy("eventbus stopped"));
+}
+----
+
+Resiliência — `tests` exaustivos `18 testes M1-M6` + `sqlite:memory` + `FileSystem` check falham healthy sem falso positivo.
+
+== Perf — S4 Could 0.2 (Stopwatch Smoke done)
+
+`BenchmarkSmokeTests` minimal já valida `<2000ms 10k renders`:
+
+[source,csharp]
+----
+[Fact] public void SqlTemplate_10k_under_2s()
+{
+    var tpl = SqlTemplate.Parse("SELECT * FROM Users {WHERE} {IF:Name} AND Name=@Name {END} {ENDWHERE}");
+    var sw = Stopwatch.StartNew();
+    for(int i=0;i<10_000;i++) tpl.Render(new { Name="eder" });
+    Assert.True(sw.ElapsedMilliseconds < 2000, $"{sw.ElapsedMilliseconds}ms >2000");
+}
+----
+
+Para métrica formal `BenchmarkDotNet` (Could, `PrivateAssets`):
+
+[source,xml]
+----
+<Project>
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" Version="0.14.0" PrivateAssets="All" />
+  </ItemGroup>
+</Project>
+----
+
+[source,csharp]
+----
+[MemoryDiagnoser] [SimpleJob] public class FootingBenchmarks
+{
+    private readonly SqlTemplate _tpl = SqlTemplate.Parse("SELECT * FROM Users {WHERE} {IF:Name} AND Name=@Name {END} {ENDWHERE}");
+    [Benchmark] public SqlResult Template() => _tpl.Render(new { Name="eder" });
+    [Benchmark] public Task<int> Batch() => SqlBatch.InsertBatchAsync(conn, "Users", usersBatch);
+}
+// dotnet run -c Release --project tests/Footing.Framework.Benchmarks
+// Result: Template ~0.8µs, Batch 500 rows ~12ms
+----
+
+NOTE: `BenchmarkDotNet` permanece `Could` — use só se dor perf >30% ou SLO `<50ms`.
+
+== UseTransaction — Won't definitivo (DDL transacional agnóstico não suportado)
+
+Ver xref:migrations.adoc#_usetransaction_wont_definitivo_ddl_transacional_agnostico_nao_suportado[Migrations — UseTransaction Won't definitivo]. `MigrationOptions.UseTransaction = true` **não suportado, mesmo com BUY** — `MSSQL` tolera mas não recomenda, `Firebird/dbf/SQLite` não permitem `DDL` em transação. `AutoTransaction=false` agnóstico; usuário controla `BEGIN/COMMIT` no `.sql` se `PG` quiser. Tentativa lança `NotSupportedException` descritivo.
+
+[source,csharp]
+----
+// Won't — throws NotSupportedException (agnostic DDL not supported)
+var runnerTx = new MigrationRunner(journal, scripts, factory, new MigrationOptions{ UseTransaction = true });
+// throw NotSupportedException("DDL transactions are not supported. Use BEGIN/COMMIT inside the .sql script if your database supports transactional DDL.")
+----
+
+== Checklist OTel/Health
+
+* `AddOpenTelemetry().AddSource("Footing.Framework")` antes de `AddEventBus()` — senão perde trace `Publish`
+* `MapHealthChecks("/health")` com `AllowCachingResponses=false` para K8s liveness probe
+* Tags: `db.system`, `event.type`, `batch.size`, `migration.version` — filtre no Grafana
