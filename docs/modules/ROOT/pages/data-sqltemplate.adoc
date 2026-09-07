@@ -36,8 +36,8 @@ Template engine leve para SQL dinâmico com Dapper e sem dependência de um banc
 | `{BETWEEN:CreatedAt} AND x BETWEEN @CreatedAtMin AND @CreatedAtMax {END}`
 
 | `{TRIM prefix="..." prefixOverrides="..." suffix="..." suffixOverrides="..."} ... {ENDTRIM}`
-| Adiciona prefixo e remove lixo. Resolve `WHERE AND` solto.
-| `SELECT * FROM users {TRIM prefix="WHERE" prefixOverrides="AND \|OR "} {IF:Name} AND name=@Name {END} {ENDTRIM}` → se Name existe: `WHERE name=@Name`; se não: vazio.
+| Monta um trecho de SQL e normaliza automaticamente seu início e fim.
+| Ver seção <<_trim>> abaixo.
 
 | `{SET} ... {ENDSET}`
 | Açúcar `TRIM prefix="SET" suffixOverrides=","`.
@@ -175,6 +175,205 @@ tpl.Render(new { Ativo="Y" });                               // Y
 ----
 
 Para `or`, `and` com 3+ fatores, `()` e `!`, use blocos aninhados ou sequenciais.
+
+== [[_trim]] `{TRIM}`
+
+Monta um trecho de SQL e normaliza automaticamente seu início e fim.
+
+[source,text]
+----
+{TRIM
+    prefix="WHERE"
+    prefixOverrides="AND |OR "
+    suffix="…"
+    suffixOverrides="…"
+}
+    …
+{ENDTRIM}
+----
+
+O `TRIM` adiciona o `prefix` e remove os prefixos ou sufixos indesejados definidos em `prefixOverrides` e `suffixOverrides`.
+
+Isso é útil principalmente para construir cláusulas condicionais sem precisar tratar manualmente o primeiro `AND` ou `OR`.
+
+=== Exemplo simples
+
+[source,sql]
+----
+SELECT *
+FROM users
+{TRIM prefix="WHERE" prefixOverrides="AND |OR "}
+    {IF:Name}
+        AND name = @Name
+    {END}
+{ENDTRIM}
+----
+
+Quando `Name` está preenchido:
+
+[source,sql]
+----
+SELECT *
+FROM users
+WHERE name = @Name
+----
+
+Quando `Name` não está preenchido:
+
+[source,sql]
+----
+SELECT *
+FROM users
+----
+
+O bloco pode começar naturalmente com `AND` ou `OR`; o `TRIM` remove esse operador quando necessário e adiciona `WHERE` somente quando existe conteúdo.
+
+Isso permite escrever condições independentes sem gerar `WHERE AND`, `WHERE OR` ou `WHERE` vazio.
+
+=== Várias condições
+
+[source,sql]
+----
+SELECT *
+FROM users
+{TRIM prefix="WHERE" prefixOverrides="AND |OR "}
+    {IF:Name}
+        AND name = @Name
+    {END}
+
+    {IF:Email}
+        AND email = @Email
+    {END}
+
+    {IF:Active}
+        AND active = @Active
+    {END}
+{ENDTRIM}
+----
+
+Com `Name` e `Active`:
+
+[source,sql]
+----
+SELECT *
+FROM users
+WHERE name = @Name
+AND active = @Active
+----
+
+Com apenas `Email`:
+
+[source,sql]
+----
+SELECT *
+FROM users
+WHERE email = @Email
+----
+
+Sem nenhum filtro:
+
+[source,sql]
+----
+SELECT *
+FROM users
+----
+
+A vantagem é que cada condição pode simplesmente começar com `AND`. O `TRIM` remove o primeiro `AND` e coloca o `WHERE`.
+
+=== Exemplo com OR
+
+Também funciona para grupos de alternativas:
+
+[source,sql]
+----
+SELECT *
+FROM users
+{TRIM prefix="WHERE" prefixOverrides="AND |OR "}
+    {IF:Name}
+        OR name = @Name
+    {END}
+
+    {IF:Email}
+        OR email = @Email
+    {END}
+
+    {IF:Phone}
+        OR phone = @Phone
+    {END}
+{ENDTRIM}
+----
+
+Com `Name` e `Email`:
+
+[source,sql]
+----
+SELECT *
+FROM users
+WHERE name = @Name
+OR email = @Email
+----
+
+Com somente `Phone`:
+
+[source,sql]
+----
+SELECT *
+FROM users
+WHERE phone = @Phone
+----
+
+=== AND + grupo OR (TRIM aninhado)
+
+Aqui aparece melhor o motivo de existir o `TRIM`:
+
+[source,sql]
+----
+SELECT *
+FROM users
+{TRIM prefix="WHERE" prefixOverrides="AND |OR "}
+    {IF:Active}
+        AND active = true
+    {END}
+
+    {TRIM prefix="AND (" prefixOverrides="OR " suffix=")"}
+        {IF:Name}
+            OR name = @Name
+        {END}
+
+        {IF:Email}
+            OR email = @Email
+        {END}
+
+        {IF:Phone}
+            OR phone = @Phone
+        {END}
+    {ENDTRIM}
+{ENDTRIM}
+----
+
+Se `Active=true` e `Name` + `Email`:
+
+[source,sql]
+----
+SELECT *
+FROM users
+WHERE active = true
+AND (name = @Name OR email = @Email)
+----
+
+Se somente `Email`:
+
+[source,sql]
+----
+SELECT *
+FROM users
+WHERE active = true
+AND (email = @Email)
+----
+
+E se nenhum dos filtros existir, o fragmento simplesmente desaparece.
+
+Você escreve cada condição começando naturalmente com `AND` ou `OR`. O `{TRIM}` remove o primeiro operador inválido e adiciona o prefixo somente quando o bloco realmente possui conteúdo.
 
 == Ver também
 
