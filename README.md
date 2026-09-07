@@ -360,6 +360,13 @@ e o limite de parâmetros da instrução:
 
 Isso permite trabalhar com diferentes provedores sem amarrar o core a PostgreSQL, Firebird ou outro banco específico.
 
+Para PostgreSQL sem aspas (`snake_case`):
+
+```csharp
+SqlBatch.EnableGlobalSnakeCase(); // Program.cs, 1 vez
+// INSERT INTO users (user_name, created_at) — Dapper mapeia user_name → UserName
+```
+
 ---
 
 # SPI para infraestrutura

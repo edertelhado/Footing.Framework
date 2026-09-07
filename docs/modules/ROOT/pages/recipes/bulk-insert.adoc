@@ -11,6 +11,11 @@ var n = await SqlBatch.InsertBatchAsync(uow, "Users", users, batchSize: 500);
 await uow.CommitAsync();
 
 var (sql, parms) = SqlBatch.BuildBatchInsert("Users", users, columnsOverride: "Name,Age,Email");
+
+// PG snake_case sem aspas
+SqlBatch.EnableGlobalSnakeCase();
+var (sql2, parms2) = SqlBatch.BuildBatchInsert("users", users, useSnakeCase: true);
+// INSERT INTO users (user_name, created_at) — Dapper mapeia user_name → UserName
 ----
 
-Chunk `500` com auto-ajuste `2100/colCount` para SQL Server. Agnostic PG/MySQL/SQLite.
+Chunk `500` com auto-ajuste `2100/colCount` para SQL Server. Agnostic PG/MySQL/SQLite. `useSnakeCase`/`GlobalUseSnakeCase` amarra Dapper `MatchNamesWithUnderscores`.

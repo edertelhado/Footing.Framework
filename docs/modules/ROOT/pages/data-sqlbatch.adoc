@@ -11,10 +11,13 @@ Insert em batch Dapper-friendly, agnóstico a banco (PostgreSQL, SQL Server, SQL
 using Footing.Framework.Data;
 
 public static class SqlBatch {
-  public static (string Sql, DynamicParameters Parameters) BuildBatchInsert<T>(string tableName, IEnumerable<T> items, string? columnsOverride = null);
-  public static Task<int> InsertBatchAsync<T>(IDbConnection conn, string tableName, IEnumerable<T> items, IDbTransaction? tx = null, int batchSize = 500, CancellationToken ct = default);
-  public static Task<int> InsertBatchAsync<T>(UnitOfWork uow, string tableName, IEnumerable<T> items, int batchSize = 500, CancellationToken ct = default);
+  public static (string Sql, DynamicParameters Parameters) BuildBatchInsert<T>(string tableName, IEnumerable<T> items, string? columnsOverride = null, bool useSnakeCase = false);
+  public static Task<int> InsertBatchAsync<T>(IDbConnection conn, string tableName, IEnumerable<T> items, IDbTransaction? tx = null, int batchSize = 500, bool useSnakeCase = false, CancellationToken ct = default);
+  public static Task<int> InsertBatchAsync<T>(UnitOfWork uow, string tableName, IEnumerable<T> items, int batchSize = 500, bool useSnakeCase = false, CancellationToken ct = default);
   public static void ValidateTableName(string tableName); // ^[A-Za-z_][\w]*(\.[\w]*)*$ — rejeita ; DROP
+  public static bool GlobalUseSnakeCase { get; set; }
+  public static void EnableGlobalSnakeCase(); // Batch snake_case + Dapper MatchNamesWithUnderscores
+  public static void EnableSnakeCaseMapping(); // só Dapper user_name → UserName
 }
 ----
 
@@ -50,6 +53,10 @@ var (sql2, parms2) = SqlBatch.BuildBatchInsert("Users", users, columnsOverride: 
 
 // Com schema
 var (sql3, _) = SqlBatch.BuildBatchInsert("public.Users", users);
+
+// PostgreSQL snake_case sem aspas (PascalCase → snake_case)
+var (sql4, _) = SqlBatch.BuildBatchInsert("users", users, useSnakeCase: true);
+// sql: INSERT INTO users (user_name, created_at) VALUES (@p0_UserName, @p0_CreatedAt), ...
 ----
 
 == Chunking & limite 2100
@@ -57,6 +64,20 @@ var (sql3, _) = SqlBatch.BuildBatchInsert("public.Users", users);
 ----
 5000 rows × 3 cols → 10 statements (500 cada), ~30-50ms
 effective = Math.Min(batchSize, 2100 / colCount) // SQL Server 2100 params
+----
+
+== Snake_case global (PostgreSQL sem aspas)
+
+[source,csharp]
+----
+// Program.cs — 1 vez no startup, vale para todo Batch + Query
+SqlBatch.EnableGlobalSnakeCase(); // ou SqlBatch.GlobalUseSnakeCase = true;
+// Batch: INSERT INTO users (user_name) — sem "UserName" quoted
+// Query: Dapper mapeia user_name → UserName via DefaultTypeMap.MatchNamesWithUnderscores
+
+// Só Dapper, sem Batch
+SqlBatch.EnableSnakeCaseMapping(); // ou Dapper.DefaultTypeMap.MatchNamesWithUnderscores = true;
+var users = await conn.QueryAsync<User>("SELECT user_name, created_at FROM users");
 ----
 
 == Validação de tabela (fail-fast)
