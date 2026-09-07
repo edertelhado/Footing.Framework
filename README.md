@@ -2,6 +2,8 @@
 
 [![Docs Antora](https://img.shields.io/badge/docs-antora-blueviolet)](docs/build/site/footing-framework/3.5/index.html) [![Version](https://img.shields.io/badge/version-3.5.1-blue)](src/Footing.Framework/Footing.Framework.csproj) [![Tests](https://img.shields.io/badge/tests-477%20passed-brightgreen)](tests/Footing.Framework.Tests) [![Regex](https://img.shields.io/badge/regex-11-orange)](src/Footing.Framework/Data/SqlTemplate.cs) [![Pack](https://img.shields.io/badge/pack-78K-yellow)](https://www.nuget.org/packages/Footing.Framework) [![Agnostic](https://img.shields.io/badge/agnostic-PG%20%7C%20Firebird%20%7C%20dbf-lightgrey)](docs/modules/ROOT/pages/outbox-idempotency.adoc)
 
+> **Autor:** **Eder Rafael Telhado** — Brasil · [@edertelhado](https://github.com/edertelhado) · [CapybaraInfo](https://github.com/CapybaraInfo) · [LinkedIn](https://www.linkedin.com/in/etelhado/) · `edertelhado@outlook.com.br` · Explorando novas tecnologias, Spring Boot & VueJS
+
 Microframework base para construção de serviços com .NET (a "sapata" do projeto). Oferece EventBus in-process com
 handlers tipados e priorizados, Data Layer dinâmico (SqlTemplate + Dapper), DI com auto-scan, Lifecycle e
 Injeção de Configuração.

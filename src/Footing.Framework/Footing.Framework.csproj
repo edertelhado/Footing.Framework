@@ -13,14 +13,14 @@
         <IsPackable>true</IsPackable>
         <PackageId>Footing.Framework</PackageId>
         <Version>3.5.1</Version>
-        <Authors>Eder Telhado</Authors>
-        <Company>Footing</Company>
+        <Authors>Eder Rafael Telhado</Authors>
+        <Company>CapybaraInfo</Company>
         <Description>Microframework base .NET (sapata) — EventBus in-process, Data Layer (SqlTemplate + Dapper), DI auto-scan, Lifecycle e InjectConfig. Zero dependência de domínio.</Description>
-        <PackageTags>footing;framework;microframework;dapper;eventbus;di</PackageTags>
+        <PackageTags>footing;framework;microframework;dapper;eventbus;di;postgres;firebird</PackageTags>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
         <PackageReadmeFile>README.md</PackageReadmeFile>
-        <PackageProjectUrl>https://github.com/etelhado/Footing.Framework</PackageProjectUrl>
-        <RepositoryUrl>https://github.com/etelhado/Footing.Framework</RepositoryUrl>
+        <PackageProjectUrl>https://github.com/edertelhado/Footing.Framework</PackageProjectUrl>
+        <RepositoryUrl>https://github.com/edertelhado/Footing.Framework</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageIcon>icon.png</PackageIcon>
         <PublishRepositoryUrl>true</PublishRepositoryUrl>
