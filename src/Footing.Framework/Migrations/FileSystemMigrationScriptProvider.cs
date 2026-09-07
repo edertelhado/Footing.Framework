@@ -35,7 +35,23 @@ public sealed class EmbeddedResourceMigrationScriptProvider : IMigrationScriptPr
             if (s == null) continue;
             using var r = new StreamReader(s);
             var sql = await r.ReadToEndAsync(ct);
-            if (MigrationVersionParser.TryParse(name, null, sql, out var info)) yield return info;
+            var fileName = ExtractFileNameFromResourceName(name);
+            if (MigrationVersionParser.TryParse(fileName, null, sql, out var info)) yield return info;
         }
+    }
+
+    private static string ExtractFileNameFromResourceName(string resourceName)
+    {
+        var lastDot = resourceName.LastIndexOf('.');
+        if (lastDot < 0) return resourceName;
+        var ext = resourceName[lastDot..];
+        var nameWithoutExt = resourceName[..lastDot];
+        var lastUnderscoreDouble = nameWithoutExt.LastIndexOf("__");
+        if (lastUnderscoreDouble < 0) return resourceName;
+        var description = nameWithoutExt[(lastUnderscoreDouble + 2)..];
+        var prefix = nameWithoutExt[..lastUnderscoreDouble];
+        var lastDotInPrefix = prefix.LastIndexOf('.');
+        var versionPrefix = lastDotInPrefix >= 0 ? prefix[(lastDotInPrefix + 1)..] : prefix;
+        return $"{versionPrefix}__{description}{ext}";
     }
 }

@@ -4,17 +4,14 @@ namespace Footing.Framework.EventBus;
 public class EventBusHostedService : IHostedService
 {
     private readonly EventBus _eventBus;
-    private readonly IServiceProvider _serviceProvider;
 
-    public EventBusHostedService(EventBus eventBus, IServiceProvider serviceProvider)
+    public EventBusHostedService(EventBus eventBus)
     {
         _eventBus = eventBus;
-        _serviceProvider = serviceProvider;
     }
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        _eventBus.RegisterListenersFromProvider(_serviceProvider);
         return Task.CompletedTask;
     }
 

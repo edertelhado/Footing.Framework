@@ -1,6 +1,5 @@
 #nullable enable
 using System.Reflection;
-using Footing.Framework.Attributes;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 namespace Footing.Framework.DI;

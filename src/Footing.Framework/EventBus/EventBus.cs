@@ -26,7 +26,6 @@ public class EventBus : IAsyncDisposable
     private readonly int _workerCount;
     private readonly ILogger<EventBus>? _logger;
 
-    private int _listenersRegistered = 0;
     private readonly ConcurrentDictionary<Type, bool> _registeredTypes = new();
     private readonly ConcurrentDictionary<(Type, MethodInfo), bool> _registeredListeners = new();
     private readonly ConcurrentDictionary<(Type, Type), bool> _registeredHandlerInterfaces = new();
@@ -55,42 +54,6 @@ public class EventBus : IAsyncDisposable
         _channel = Channel.CreateBounded<object>(boundedOptions);
         for (int i = 0; i < _workerCount; i++)
             _workers.Add(Task.Run(() => WorkerLoop(_cts.Token)));
-    }
-
-    public void RegisterListenersFromProvider(IServiceProvider provider)
-    {
-        if (Interlocked.CompareExchange(ref _listenersRegistered, 1, 0) == 1)
-        {
-            _logger?.LogWarning("RegisterListenersFromProvider already called, skipping");
-            return;
-        }
-
-        var serviceDescriptors = provider.GetService<IServiceCollection>();
-        if (serviceDescriptors == null)
-        {
-            _logger?.LogError("IServiceCollection not found in provider");
-            return;
-        }
-
-        foreach (var descriptor in serviceDescriptors)
-        {
-            if (descriptor.ServiceType == null) continue;
-            if (!_registeredTypes.TryAdd(descriptor.ServiceType, true))
-                continue;
-
-            try
-            {
-                var service = provider.GetService(descriptor.ServiceType);
-                if (service == null) continue;
-
-                RegisterListenersFromInstance(service);
-                RegisterTypedEventHandlerInterfaces(service);
-            }
-            catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException)
-            {
-                _logger?.LogWarning(ex, "Skipping service {ServiceType}", descriptor.ServiceType);
-            }
-        }
     }
 
     public void RegisterListenersFromInstance(object instance)

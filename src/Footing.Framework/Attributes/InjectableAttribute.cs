@@ -1,5 +1,4 @@
-using Footing.Framework.DI;
-namespace Footing.Framework.Attributes;
+namespace Footing.Framework.DI;
 
 [AttributeUsage(AttributeTargets.Class, Inherited = false)]
 public class InjectableAttribute(InjectableLifetime lifetime) : Attribute

@@ -40,7 +40,7 @@ builder.Services.AddSingleton<IMigrationJournal, MeuJournalCustom>();
 builder.Services.AddSingleton<IMigrationScriptProvider, MeuProvider>();
 ----
 
-HostedService faz `EnsureHistoryTable → (Repair?) → (Baseline?) → Validate? → Migrate` automático. Para controle manual:
+HostedService faz `EnsureHistoryTable → (Repair?) → (Baseline?) → Migrate` automático. Migrate internamente garante history table e valida checksums. Para controle manual:
 
 [source,csharp]
 ----
@@ -78,7 +78,7 @@ public interface IMigrationRunner {
   Task<string> GenerateScriptAsync(CancellationToken ct = default);
 }
 
-public sealed record MigrationInfo(string Version, string ScriptName, string Sql, string Checksum, string Type);
+public sealed record MigrationInfo(string Version, string Description, string ScriptName, string Type, string Checksum, string Sql);
 ----
 
 == VersionParser

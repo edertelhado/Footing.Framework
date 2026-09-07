@@ -1,4 +1,3 @@
-using Footing.Framework.Attributes;
 using Footing.Framework.DI;
 using Footing.Framework.EventBus;
 using Microsoft.Extensions.DependencyInjection;

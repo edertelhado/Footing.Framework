@@ -78,6 +78,7 @@ Registre os componentes necessários:
 ```csharp
 using Footing.Framework.Data;
 using Footing.Framework.DI;
+using Footing.Framework.Health;
 
 var builder = WebApplication.CreateBuilder(args);
 

@@ -92,15 +92,6 @@ public sealed class MigrationHostedService : IHostedService
             _log?.LogInformation("Migrations: Baseline {Version}", o.BaselineVersion);
             await _runner.BaselineAsync(o.BaselineVersion, cancellationToken);
         }
-        if (o.ValidateOnMigrate)
-        {
-            try { await _runner.ValidateAsync(cancellationToken); }
-            catch (MigrationException ex)
-            {
-                _log?.LogError(ex, "Migrations: Validate failed — checksum drift");
-                throw;
-            }
-        }
         var result = await _runner.MigrateAsync(cancellationToken);
         _log?.LogInformation("Migrations: Migrate done — applied {Applied}, skipped {Skipped}", result.Applied.Count, result.Skipped.Count);
     }

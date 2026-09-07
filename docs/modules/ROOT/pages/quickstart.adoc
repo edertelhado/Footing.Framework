@@ -17,6 +17,7 @@ dotnet add package Footing.Framework --version {footing-version}
 ----
 // Program.cs — net10.0
 using Footing.Framework.DI;
+using Footing.Framework.Health;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -27,7 +28,7 @@ builder.Services.AddSingleton<IDbConnectionFactory>(new NpgsqlConnectionFactory(
 // EventBus Channel bounded 100
 builder.Services.AddEventBus(o => { o.WorkerCount = 4; o.Capacity = 100; o.DrainOnStop = true; });
 
-// Migrations — EmbeddedResource, AutoMigrate + Validate no startup (SQL-97 default)
+// Migrations — EmbeddedResource, AutoMigrate no startup (SQL-97 default)
 builder.Services.AddMigrations(o => {
   o.EmbeddedAssembly = typeof(Program).Assembly; // .sql como EmbeddedResource
   o.ValidateOnMigrate = true;  // checksum drift → throw
@@ -82,7 +83,7 @@ Teste sem DB real:
 
 [source,bash]
 ----
-dotnet test -c Release # 473 Passed
+dotnet test -c Release # 477 Passed
 curl http://localhost:5000/health # {"status":"Healthy","checks":[{"name":"db"},{"name":"eventbus"}]}
 curl -X POST http://localhost:5000/users -H "Idempotency-Key: k1" -d '{"name":"eder"}'
 ----
