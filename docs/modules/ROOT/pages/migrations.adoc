@@ -73,18 +73,33 @@ MigrationVersionParser.TryParse("001__baseline.sql", out var b);  // Type=BASELI
 // sem GeneratedRegex — IndexOf "__"
 ----
 
-== Runner
+== Uso recomendado — AddMigrations (1-liner)
 
 [source,csharp]
 ----
-var runner = new MigrationRunner(journal, new FileSystemMigrationScriptProvider("Migrations"), factory,
-    new MigrationOptions{ Placeholders = new Dictionary<string,string>{ ["schema"]="public"} });
+// Program.cs — EmbeddedResource é o padrão (Migrations/*.sql como EmbeddedResource)
+builder.Services.AddMigrations(o => {
+  o.EmbeddedAssembly = typeof(Program).Assembly; // busca *.sql no assembly
+  o.EmbeddedPrefix = "MeuProjeto.Migrations";    // opcional — filtra prefixo
+  // ou o.FileSystemFolder = "Migrations"; // alternativa FileSystem
+  o.Placeholders["schema"] = "public";           // pass:[{{schema}}] → public
+  o.ValidateOnMigrate = true;  // checksum drift → throw (default true)
+  o.RepairOnMigrate = false;   // DELETE WHERE success='N' antes (default false)
+  o.BaselineOnMigrate = false; o.BaselineVersion = "0";
+  o.AutoMigrate = true;        // HostedService roda Migrate no startup (default true)
+});
+// Override Spring Security like — registre antes ou depois, TryAdd respeita:
+builder.Services.AddSingleton<IMigrationJournal, MeuJournalCustom>(); // SQL-97 default é DefaultMigrationJournal
+builder.Services.AddSingleton<IMigrationScriptProvider, MeuProvider>(); 
+----
 
-await runner.MigrateAsync();             // bloqueia se success='N' pendente, catch → Insert N + throw MigrationException
-await runner.ValidateAsync();            // drift SHA256
-await runner.RepairAsync();              // DELETE WHERE success='N'
-await runner.BaselineAsync("0");
-var dry = await runner.GenerateScriptAsync(); // sem executar, DBA revisa
+HostedService faz `EnsureHistoryTable → (Repair?) → (Baseline?) → Validate? → Migrate → GenerateScript` automático. Para controle manual:
+
+[source,csharp]
+----
+var runner = app.Services.GetRequiredService<IMigrationRunner>();
+await runner.MigrateAsync();
+var dry = await runner.GenerateScriptAsync(); // dry-run DBA revisa
 ----
 
 * Placeholders `pass:[{{schema}}]` via `Dictionary Replace` — sem regex.

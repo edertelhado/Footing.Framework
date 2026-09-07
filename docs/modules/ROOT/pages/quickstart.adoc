@@ -28,6 +28,16 @@ builder.Services.AddSingleton<IDbConnectionFactory>(new NpgsqlConnectionFactory(
 // EventBus Channel bounded 100
 builder.Services.AddEventBus(o => { o.WorkerCount = 4; o.Capacity = 100; o.DrainOnStop = true; });
 
+// Migrations — EmbeddedResource, AutoMigrate + Validate no startup (SQL-97 default)
+builder.Services.AddMigrations(o => {
+  o.EmbeddedAssembly = typeof(Program).Assembly; // .sql como EmbeddedResource
+  o.ValidateOnMigrate = true;  // checksum drift → throw
+  o.RepairOnMigrate = false;   // DELETE WHERE success='N' se ativado
+  o.BaselineOnMigrate = false; o.BaselineVersion = "0";
+  o.Placeholders["schema"] = "public";
+});
+// Override se precisar (Spring Security like): AddSingleton(IMigrationJournal, MeuJournal) antes ou depois
+
 // Health + OTel
 builder.Services.AddFootingHealthChecks();
 builder.Services.AddOpenTelemetry().WithTracing(b => b.AddSource("Footing.Framework"));

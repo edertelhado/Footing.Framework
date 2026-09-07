@@ -693,37 +693,44 @@ var spec = ativo.And(adulto).Where(u => u.Name != "");
 var filtrados = users.Where(spec.IsSatisfiedBy).ToList(); // composable, sem DB, sem ORM
 ```
 
-## Migrations — SPI carteiro Y/N
+## Migrations — SQL-97 default + SPI
 
-> **Y/N 100% agnóstico:** `success CHAR(1) Y/N CHECK (success IN ('Y','N'))` em `docs/examples/Migrations/DDL/__migrations.sql` (PG CHAR(1), MSSQL CHAR(1), FB CHAR(1), dbf C(1)) — vence `BOOLEAN/BIT/INTEGER`. Alinha com `BoolCharYNTypeHandler` `bool→'Y'/'N'` `DbType.AnsiStringFixedLength Size=1`.
+> **Agnóstico:** `success CHAR(1) Y/N CHECK (success IN ('Y','N'))` em `docs/examples/Migrations/DDL/__migrations.sql` — compatível com PostgreSQL, SQL Server, Firebird e dbf. Alinha com `BoolCharYNTypeHandler` `bool→'Y'/'N'`.
 
 ```csharp
-// SPI tripartite — app fornece Journal (via IDbConnectionFactory)
-public interface IMigrationJournal { Task EnsureHistoryTableAsync(CancellationToken ct=default); Task<IReadOnlyList<string>> GetAppliedVersionsAsync(CancellationToken ct=default); Task MarkAppliedAsync(MigrationInfo m, string checksum, long ms, string successYN, string? error, CancellationToken ct=default); /* + HasApplied/GetChecksum/Baseline/Repair/Info */ }
-public interface IMigrationScriptProvider { IAsyncEnumerable<MigrationInfo> GetScriptsAsync(CancellationToken ct=default); } // FileSystem ou EmbeddedResource
-public interface IMigrationRunner { Task<MigrationResult> MigrateAsync(CancellationToken ct=default); Task ValidateAsync(CancellationToken ct=default); Task<IReadOnlyList<MigrationStatus>> InfoAsync(CancellationToken ct=default); Task RepairAsync(CancellationToken ct=default); Task BaselineAsync(string v="0", CancellationToken ct=default); Task<string> GenerateScriptAsync(CancellationToken ct=default); }
+// Recomendado — 1-liner com EmbeddedResource (Migrations/*.sql como EmbeddedResource)
+builder.Services.AddMigrations(o => {
+  o.EmbeddedAssembly = typeof(Program).Assembly;
+  o.EmbeddedPrefix = "MeuProjeto.Migrations";
+  // ou o.FileSystemFolder = "Migrations";
+  o.Placeholders["schema"] = "public";
+  o.ValidateOnMigrate = true;  // checksum drift → throw
+  o.RepairOnMigrate = false;   // DELETE WHERE success='N'
+  o.BaselineOnMigrate = false; o.BaselineVersion = "0";
+  o.AutoMigrate = true; // HostedService roda no startup
+});
+// Override Spring Security like — porta aberta (TryAdd):
+builder.Services.AddSingleton<IMigrationJournal, MeuJournalCustom>();
+builder.Services.AddSingleton<IMigrationScriptProvider, MeuProvider>();
 
-// VersionParser sem regex (11→11) — V1__ , V1_0_1__ (_→.), R__ , R001__ , 001__ baseline
-MigrationVersionParser.TryParse("V1_0_1__fix.sql", out var m); // Version=1.0.1, Type=VERSIONED
-MigrationVersionParser.TryParse("R__views.sql", out var r);    // Type=REPEATABLE, checksum diff → reexecuta
-MigrationVersionParser.TryParse("001__baseline.sql", out var b);// Type=BASELINE
+// Manual se precisar
+var runner = app.Services.GetRequiredService<IMigrationRunner>();
+await runner.MigrateAsync();
+var dry = await runner.GenerateScriptAsync(); // dry-run DBA revisa
 
-// Checksum SHA256 drift fail-fast
-var cs = MigrationChecksum.Compute(sql); // 64 hex
+// SPI — só se precisar customizar
+public interface IMigrationJournal { Task EnsureHistoryTableAsync(CancellationToken ct=default); /* GetApplied/GetChecksum/MarkApplied/Repair/Baseline/Info */ }
+public interface IMigrationScriptProvider { IAsyncEnumerable<MigrationInfo> GetScriptsAsync(CancellationToken ct=default); }
 
-// Runner carteiro — placeholders Dictionary Replace {{schema}}
-var runner = new MigrationRunner(journal, new FileSystemMigrationScriptProvider("Migrations"), factory, new MigrationOptions{ Placeholders = new Dictionary<string,string>{ ["schema"]="public"} });
-await runner.MigrateAsync();             // bloqueia se success='N' pendente, catch → Insert N + throw MigrationException
-await runner.ValidateAsync();            // drift
-await runner.RepairAsync();              // DELETE WHERE success='N'
-await runner.BaselineAsync("0");
-var dry = await runner.GenerateScriptAsync(); // sem executar, DBA revisa
+// VersionParser: V1__ , V1_0_1__ (_→.), R__ , R001__ , 001__ baseline
+MigrationVersionParser.TryParse("V1_0_1__fix.sql", out var m); // 1.0.1
+var cs = MigrationChecksum.Compute(sql); // SHA256 64 hex
 
 // TypeHandler Y/N
 SqlMapper.AddTypeHandler(new BoolCharYNTypeHandler()); // bool ↔ 'Y'/'N'
 ```
 
-DDL agnóstico: `CREATE TABLE __migrations (..., success CHAR(1) NOT NULL CHECK (success IN ('Y','N')), error_message VARCHAR(4000))` — `SELECT * WHERE success='Y'` / `success='N'` bloqueia / `DELETE WHERE success='N'` repair.
+DDL: `CREATE TABLE __migrations (..., success CHAR(1) CHECK (success IN ('Y','N')))` — SQL-97 puro via `DefaultMigrationJournal` (`IDbConnectionFactory` + `IDbCommand`), sem `Npgsql` no `src/`.
 
 ## Dependências
 

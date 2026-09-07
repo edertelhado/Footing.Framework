@@ -5,6 +5,26 @@ public sealed class MigrationOptions
     public string HistoryTable { get; set; } = "__migrations";
     public Dictionary<string, string> Placeholders { get; set; } = new();
 
+    /// <summary>Assembly + prefix para EmbeddedResource. Default: entry assembly, filtrado por .sql.</summary>
+    public System.Reflection.Assembly? EmbeddedAssembly { get; set; }
+    public string? EmbeddedPrefix { get; set; }
+
+    /// <summary>Pasta FileSystem alternativa (ex: "Migrations"). Se setado, usa FileSystem provider.</summary>
+    public string? FileSystemFolder { get; set; }
+
+    /// <summary>Auto-migrate no HostedService StartAsync (default true).</summary>
+    public bool AutoMigrate { get; set; } = true;
+
+    /// <summary>Valida checksum drift antes/depois do migrate (default true).</summary>
+    public bool ValidateOnMigrate { get; set; } = true;
+
+    /// <summary>Repair (DELETE WHERE success='N') antes do migrate (default false).</summary>
+    public bool RepairOnMigrate { get; set; } = false;
+
+    /// <summary>Baseline se history vazia (INSERT version baseline, default false).</summary>
+    public bool BaselineOnMigrate { get; set; } = false;
+    public string BaselineVersion { get; set; } = "0";
+
     private bool _useTransaction;
 
     /// <summary>
