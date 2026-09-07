@@ -1,128 +1,597 @@
 # Footing.Framework
 
-[![NuGet](https://img.shields.io/nuget/v/Footing.Framework?label=NuGet)](https://www.nuget.org/packages/Footing.Framework) [![Build](https://img.shields.io/github/actions/workflow/status/edertelhado/Footing.Framework/publish.yml?branch=master&label=build)](https://github.com/edertelhado/Footing.Framework/actions) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Docs](https://img.shields.io/badge/docs-Antora-blueviolet)](https://edertelhado.github.io/Footing.Framework/)
+[![NuGet](https://img.shields.io/nuget/v/Footing.Framework?label=NuGet)](https://www.nuget.org/packages/Footing.Framework)
+[![Build](https://img.shields.io/github/actions/workflow/status/edertelhado/Footing.Framework/publish.yml?branch=master\&label=build)](https://github.com/edertelhado/Footing.Framework/actions)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Docs](https://img.shields.io/badge/docs-Antora-blueviolet)](https://edertelhado.github.io/Footing.Framework/)
 
-> **Sapata .NET não-invasiva** — fundação para apps que precisam de EventBus, Data Layer dinâmico e Migrations SQL puras sem carregar um framework pesado.
+> **Uma sapata .NET para sistemas reais.**
+>
+> Infraestrutura pequena e pragmática para aplicações que precisam de EventBus, SQL dinâmico, migrations e componentes de infraestrutura sem adotar um framework inteiro.
 
-**Footing.Framework** resolve 6 dores reais de apps com PostgreSQL, Firebird ou dbf legado, sem impor ORM, broker ou scaffolding: desacoplamento via EventBus in-process, queries dinâmicas com Dapper agnóstico, DI auto-scan leve, lifecycle ordenado, migrations embarcadas SQL-97 e resiliência via SPI.
+O **Footing.Framework** fornece peças de infraestrutura para aplicações .NET que precisam continuar simples, previsíveis e controláveis.
+
+Ele não tenta substituir ASP.NET, Dapper ou seu banco de dados. Ele fica entre a aplicação e essas tecnologias, resolvendo problemas recorrentes de infraestrutura sem impor ORM, broker, scaffolding ou arquitetura pesada.
+
+Funciona especialmente bem em sistemas que misturam código novo com legado, múltiplos bancos ou SQL explícito.
+
+## O que você ganha
+
+* **EventBus in-process** com `Channel<T>`, workers paralelos e prioridade de handlers.
+* **SQL dinâmico** usando arquivos `.sql` e templates simples, sem ORM.
+* **Batch SQL** com chunking automático para inserts em massa.
+* **DI auto-scan** determinístico por assembly, sem source generator.
+* **Lifecycle** com `PostConstruct` e `PreDestroy`.
+* **Configuração por atributo** com `InjectConfig`.
+* **Migrations SQL** embarcadas como `EmbeddedResource`.
+* **SPI para infraestrutura externa**, permitindo conectar Redis, PostgreSQL, Firebird, DBF etc. sem contaminar o core.
+* **OpenTelemetry** através de `ActivitySource`.
+* **Health Checks** integrados ao pipeline do ASP.NET.
+
+Tudo isso permanece opcional. Você registra apenas o que sua aplicação realmente utiliza.
+
+## Quando usar
+
+Footing faz sentido quando você precisa de uma base de infraestrutura para aplicações como:
+
+* sistemas corporativos;
+* APIs e serviços internos;
+* aplicações que utilizam SQL diretamente;
+* sistemas legados modernizados gradualmente;
+* aplicações que precisam trabalhar com PostgreSQL, Firebird, MySQL, SQLite ou DBF;
+* sistemas onde Dapper é suficiente, mas ainda faltam algumas peças de infraestrutura.
+
+É especialmente útil quando a alternativa seria criar novamente o mesmo conjunto de componentes em cada projeto.
+
+## Quando não usar
+
+Footing não é um framework full-stack.
+
+Não fornece:
+
+* scaffolding de aplicação;
+* ORM;
+* painel administrativo;
+* autenticação pronta;
+* multi-tenancy;
+* message broker;
+* arquitetura obrigatória;
+* geração de código;
+* abstrações para esconder completamente o banco de dados.
+
+A ideia é simples:
+
+> **Footing fornece infraestrutura. A aplicação continua sendo sua.**
 
 ---
 
-## Por que Footing?
+# Quickstart
 
-**Use se:**
-*   precisa desacoplar módulos sem Rabbit/Kafka
-*   queries dinâmicas com `WHERE/IF/IN/CHOOSE` sem ORM pesado
-*   migrations versionadas embarcadas (`*.sql` como `EmbeddedResource`)
-*   codebase legado Firebird/dbf + PostgreSQL no mesmo binário
-*   quer `TryAdd` — só o que registrar existe (inspirado Spring Boot auto-configuration)
-
-**Não use se:**
-*   precisa scaffolding full-stack, multi-tenancy pronto ou admin UI — Footing é sapata, não casa pronta.
-
----
-
-## Features
-
-*   **⚡ EventBus** — `Channel<T>` bounded, `Publish/PublishAsync`, `IEventHandler<T>` + `[EventListener(Priority)]`, workers paralelos
-*   **🗄️ SqlTemplate** — 11 tags `IF/WHERE/IN/CHOOSE/BETWEEN/TRIM/SET/INCLUDE/BIND/IFDEFINED` + `length()/defined()` — SQL puro em `*.sql`
-*   **📦 SqlBatch** — `INSERT VALUES` chunked `500 + 2100/colCount` agnóstico `PG/MySQL/SQLite/Firebird/dbf`
-*   **🔍 DI Walk** — `AddDependencyWalk` determinístico por assembly, sem Source Generator
-*   **♻️ Lifecycle & Config** — `[PostConstruct]/[PreDestroy]` + `[InjectConfig("Smtp:Host")]`
-*   **🗃️ Migrations** — `AddMigrations(Assembly)` SQL-97 `EmbeddedResource`, `DefaultMigrationJournal` `CHAR(1) Y/N`, `Migrate/Validate/Repair/Baseline/GenerateScript`
-*   **🛡️ Resiliência SPI** — `IIdempotencyStore` + `IOutboxStore` via `TryAdd` — pluga `Redis/Npgsql/Firebird/dbf` fora do `src/`
-*   **🔭 Observabilidade** — `FootingActivitySource` OTel + `AddFootingHealthChecks` `/health`
-
----
-
-## Quickstart — 3 comandos
+Instale o pacote:
 
 ```bash
 dotnet add package Footing.Framework
 ```
 
+Registre os componentes necessários:
+
 ```csharp
-// Program.cs
-using Footing.Framework.DI;
 using Footing.Framework.Data;
+using Footing.Framework.DI;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddDependencyWalk("MeuProjeto", builder.Configuration, typeof(Program).Assembly);
-builder.Services.AddSingleton<IDbConnectionFactory>(new NpgsqlConnectionFactory(builder.Configuration.GetConnectionString("Default")!));
-builder.Services.AddEventBus(o => { o.WorkerCount = 4; o.Capacity = 1000; });
-builder.Services.AddMigrations(o => o.EmbeddedAssembly = typeof(Program).Assembly);
+builder.Services.AddDependencyWalk(
+    "MeuProjeto",
+    builder.Configuration,
+    typeof(Program).Assembly
+);
+
+builder.Services.AddSingleton<IDbConnectionFactory>(
+    new NpgsqlConnectionFactory(
+        builder.Configuration.GetConnectionString("Default")!
+    )
+);
+
+builder.Services.AddEventBus(options =>
+{
+    options.WorkerCount = 4;
+    options.Capacity = 1000;
+});
+
+builder.Services.AddMigrations(options =>
+{
+    options.EmbeddedAssembly = typeof(Program).Assembly;
+});
+
 builder.Services.AddFootingHealthChecks();
-builder.Services.AddOpenTelemetry().WithTracing(b => b.AddSource("Footing.Framework"));
+
+builder.Services
+    .AddOpenTelemetry()
+    .WithTracing(tracing =>
+    {
+        tracing.AddSource("Footing.Framework");
+    });
 
 var app = builder.Build();
+
 app.MapHealthChecks("/health");
+
 app.Run();
-
-public sealed class NpgsqlConnectionFactory(string cs) : IDbConnectionFactory {
-  public System.Data.IDbConnection CreateConnection() => new Npgsql.NpgsqlConnection(cs);
-}
 ```
 
-```csharp
-// Repository — SQL em arquivo, Dapper direto
-public class UserRepository(IDbConnectionFactory f) {
-  public async Task<IEnumerable<User>> Search(string? name) {
-    using var conn = f.CreateConnection();
-    var tpl = SqlTemplateLoader.For<UserRepository>("Sql.Users.Search");
-    var r = tpl.Render(new { Name = name });
-    return await conn.QueryAsync<User>(r.Sql, r.Parameters);
-  }
-}
-// Sql/Users/Search.sql (EmbeddedResource)
-// SELECT * FROM users {WHERE} {IF:Name} AND name LIKE @Name {END} {ENDWHERE}
-```
+A aplicação continua responsável pelas decisões de negócio.
 
 ---
 
-## Arquitetura
+# SQL sem ORM
+
+O Footing não tenta esconder SQL.
+
+Você mantém as queries em arquivos `.sql` e utiliza Dapper para executar o resultado.
+
+### Repository
+
+```csharp
+public sealed class UserRepository(IDbConnectionFactory factory)
+{
+    public async Task<IEnumerable<User>> Search(string? name)
+    {
+        using var connection = factory.CreateConnection();
+
+        var template =
+            SqlTemplateLoader.For<UserRepository>("Sql.Users.Search");
+
+        var rendered = template.Render(new
+        {
+            Name = name
+        });
+
+        return await connection.QueryAsync<User>(
+            rendered.Sql,
+            rendered.Parameters
+        );
+    }
+}
+```
+
+### SQL
+
+`Sql/Users/Search.sql`
+
+```sql
+SELECT
+    id,
+    name,
+    email
+FROM users
+
+{WHERE}
+    {IF:Name}
+        AND name LIKE @Name
+    {END}
+{ENDWHERE}
+```
+
+O SQL continua sendo SQL.
+
+O template apenas resolve a parte dinâmica.
+
+Isso evita espalhar `StringBuilder`, concatenação de SQL e dezenas de métodos diferentes para variações da mesma consulta.
+
+## SqlTemplate
+
+O mecanismo suporta tags como:
+
+```text
+IF
+WHERE
+IN
+CHOOSE
+BETWEEN
+TRIM
+SET
+INCLUDE
+BIND
+IFDEFINED
+```
+
+Além de funções como:
+
+```text
+defined()
+length()
+```
+
+A renderização produz SQL e parâmetros separados, mantendo o uso normal do Dapper.
+
+[Documentação do SqlTemplate](docs/modules/ROOT/pages/data-sqltemplate.adoc)
+
+---
+
+# EventBus
+
+Para comunicação entre módulos dentro do mesmo processo, nem sempre é necessário RabbitMQ ou Kafka.
+
+O Footing fornece um EventBus baseado em `Channel<T>`:
+
+```csharp
+public sealed record UserCreated(long UserId);
+
+public sealed class SendWelcomeEmailHandler
+    : IEventHandler<UserCreated>
+{
+    public Task Handle(UserCreated message)
+    {
+        // ...
+        return Task.CompletedTask;
+    }
+}
+```
+
+Publicação:
+
+```csharp
+await eventBus.PublishAsync(
+    new UserCreated(user.Id)
+);
+```
+
+Os handlers podem definir prioridade:
+
+```csharp
+[EventListener(Priority = 100)]
+public sealed class AuditHandler
+    : IEventHandler<UserCreated>
+{
+    // ...
+}
+```
+
+O processamento utiliza workers configuráveis e capacidade limitada, evitando crescimento ilimitado da fila em memória.
+
+[Documentação do EventBus](docs/modules/ROOT/pages/eventbus.adoc)
+
+---
+
+# DI sem magia
+
+O `AddDependencyWalk` percorre os assemblies configurados e registra as dependências encontradas.
+
+```csharp
+builder.Services.AddDependencyWalk(
+    "MeuProjeto",
+    builder.Configuration,
+    typeof(Program).Assembly
+);
+```
+
+A descoberta é determinística por assembly e não depende de source generators.
+
+A proposta é semelhante ao conceito de auto-configuration encontrado em frameworks maiores, mas mantendo a implementação pequena.
+
+---
+
+# Lifecycle e configuração
+
+Componentes podem participar do ciclo de vida através de atributos:
+
+```csharp
+[PostConstruct]
+public void Initialize()
+{
+    // ...
+}
+
+[PreDestroy]
+public void Shutdown()
+{
+    // ...
+}
+```
+
+Configuração pode ser injetada diretamente:
+
+```csharp
+[InjectConfig("Smtp:Host")]
+public string Host { get; set; } = default!;
+```
+
+Isso cobre casos simples sem exigir uma hierarquia inteira de classes de configuração.
+
+[Documentação de DI e Lifecycle](docs/modules/ROOT/pages/di-lifecycle.adoc)
+
+---
+
+# Migrations SQL
+
+As migrations são arquivos SQL normais armazenados como `EmbeddedResource`.
+
+Exemplo:
+
+```text
+Migrations/
+├── V001__Create_users.sql
+├── V002__Create_orders.sql
+└── V003__Add_user_email.sql
+```
+
+Registro:
+
+```csharp
+builder.Services.AddMigrations(options =>
+{
+    options.EmbeddedAssembly = typeof(Program).Assembly;
+});
+```
+
+Operações disponíveis:
+
+```text
+Migrate
+Validate
+Repair
+Baseline
+GenerateScript
+```
+
+O mecanismo mantém um journal próprio e não exige ORM.
+
+A implementação utiliza SQL compatível com o subconjunto definido pelo projeto para manter o core independente do banco.
+
+[Documentação de Migrations](docs/modules/ROOT/pages/migrations.adoc)
+
+---
+
+# SQL Batch
+
+Para inserções em massa, `SqlBatch` divide automaticamente os dados em lotes.
+
+A estratégia padrão considera:
+
+```text
+500 registros
+```
+
+e o limite de parâmetros da instrução:
+
+```text
+2100 / quantidade de colunas
+```
+
+Isso permite trabalhar com diferentes provedores sem amarrar o core a PostgreSQL, Firebird ou outro banco específico.
+
+---
+
+# SPI para infraestrutura
+
+Dependências específicas de infraestrutura ficam fora do core.
+
+O Footing define contratos como:
+
+```csharp
+IIdempotencyStore
+IOutboxStore
+IMigrationJournal
+IDbConnectionFactory
+```
+
+Implementações concretas podem viver em outro projeto:
+
+```text
+Footing.Framework
+        │
+        ├── PostgreSQL
+        ├── Firebird
+        ├── Redis
+        ├── DBF
+        └── outros providers
+```
+
+Isso mantém o assembly principal sem dependências específicas como:
+
+```text
+Npgsql
+Firebird
+OleDb
+Redis
+```
+
+O padrão é:
+
+> **O framework define o contrato. A aplicação escolhe a implementação.**
+
+Os registros utilizam `TryAdd` quando apropriado, permitindo que a aplicação substitua a implementação padrão.
+
+[Documentação de Resiliência e SPI](docs/modules/ROOT/pages/resiliencia-spi.adoc)
+
+---
+
+# Observabilidade
+
+O Footing expõe um `ActivitySource` próprio para integração com OpenTelemetry.
+
+```csharp
+builder.Services
+    .AddOpenTelemetry()
+    .WithTracing(tracing =>
+    {
+        tracing.AddSource("Footing.Framework");
+    });
+```
+
+Os principais componentes podem produzir traces sem exigir que a aplicação conheça a implementação interna.
+
+Também existe integração com ASP.NET Health Checks:
+
+```csharp
+builder.Services.AddFootingHealthChecks();
+
+app.MapHealthChecks("/health");
+```
+
+[Documentação de Observabilidade](docs/modules/ROOT/pages/observability.adoc)
+
+---
+
+# Arquitetura
 
 ```mermaid
 flowchart LR
-  Controller --> Service["Service"]
-  Service --> Repo["Repository"]
-  Repo --> Dapper
-  Dapper --> Factory["IDbConnectionFactory"]
-  Factory --> DB[("PG Firebird dbf via SPI")]
-  Service --> EB["EventBus Channel"]
-  EB --> Handler["IEventHandler Priority"]
-  Service --> Batch["SqlBatch chunked"]
-  Migrations["MigrationRunner YN"] --> Factory
-  OTel["ActivitySource"] -.-> EB & Dapper & Batch
-  Health["Health Checks"] -.-> Factory & EB
+    Controller --> Service
+    Service --> Repository
+    Repository --> Dapper
+    Dapper --> Factory["IDbConnectionFactory"]
+    Factory --> DB[("PostgreSQL / Firebird / DBF")]
+
+    Service --> EventBus["EventBus"]
+    EventBus --> Handler["EventHandler"]
+
+    Service --> Batch["SqlBatch"]
+
+    MigrationRunner["MigrationRunner"] --> Factory
+
+    OTel["OpenTelemetry"] -.-> EventBus
+    OTel -.-> Dapper
+    OTel -.-> Batch
+
+    Health["Health Checks"] -.-> Factory
+    Health -.-> EventBus
 ```
 
-Princípios: agnóstico a banco (`0 Npgsql/Firebird/OleDb` no `src/`), SPI `IOutboxStore/IIdempotencyStore/IMigrationJournal` — quem precisa pluga, `<3.5K LOC`, fail-fast de estrutura vs fail-safe de dados.
+A arquitetura segue alguns princípios simples:
+
+### Banco agnóstico
+
+O core não depende diretamente de PostgreSQL, Firebird, MySQL, SQLite ou DBF.
+
+### SQL explícito
+
+Queries continuam sendo SQL.
+
+### SPI em vez de acoplamento
+
+Integrações específicas são implementadas fora do core.
+
+### Componentes independentes
+
+Você pode utilizar apenas:
+
+```text
+EventBus
+SqlTemplate
+Migrations
+DI
+Health Checks
+```
+
+sem precisar adotar todo o restante.
+
+### Fail-fast para estrutura
+
+Problemas de configuração ou estrutura devem falhar cedo.
+
+### Fail-safe para dados
+
+Operações de infraestrutura devem evitar comprometer o processo inteiro quando uma falha recuperável puder ser isolada.
 
 ---
 
-## Documentação completa
+# Estrutura do projeto
 
-*   [Quickstart](docs/modules/ROOT/pages/quickstart.adoc) — instalação + Hello World
-*   [Arquitetura](docs/modules/ROOT/pages/arquitetura.adoc) — camadas e fluxo
-*   [EventBus](docs/modules/ROOT/pages/eventbus.adoc) — publish/subscribe + prioridade
-*   [SqlTemplate](docs/modules/ROOT/pages/data-sqltemplate.adoc) — 11 tags com SQL antes/depois
-*   [SqlBatch](docs/modules/ROOT/pages/data-sqlbatch.adoc) — batch agnóstico
-*   [DI & Lifecycle](docs/modules/ROOT/pages/di-lifecycle.adoc) — auto-scan + PostConstruct
-*   [Migrations](docs/modules/ROOT/pages/migrations.adoc) — EmbeddedResource SQL-97
-*   [Resiliência SPI](docs/modules/ROOT/pages/resiliencia-spi.adoc) — Idempotency/Outbox
-*   [Observabilidade](docs/modules/ROOT/pages/observability.adoc) — OTel + Health
+A intenção é manter o core pequeno.
+
+```text
+Footing.Framework
+├── EventBus
+├── Data
+│   ├── SqlTemplate
+│   └── SqlBatch
+├── DI
+├── Lifecycle
+├── Migrations
+├── Resilience
+└── Observability
+```
+
+A implementação principal permanece abaixo de aproximadamente **3.500 linhas de código**, mantendo o projeto auditável e fácil de entender.
 
 ---
 
-## Requisitos
+# Requisitos
 
-*   .NET 10.0+
-*   Dapper 2.1.72
-*   Microsoft.Extensions.* 10.0.8
+* .NET 10.0+
+* Dapper 2.1.72
+* Microsoft.Extensions.* 10.0.8
 
-## Licença
+O projeto não obriga um banco específico nem um ORM específico.
 
-MIT — ver [LICENSE](LICENSE).
+---
 
-> Autor: **Eder Rafael Telhado** — [@edertelhado](https://github.com/edertelhado) · [CapybaraInfo](https://github.com/CapybaraInfo) · `edertelhado@outlook.com.br`
+# Documentação
+
+A documentação completa está disponível em:
+
+**https://edertelhado.github.io/Footing.Framework/**
+
+Principais capítulos:
+
+* [Quickstart](docs/modules/ROOT/pages/quickstart.adoc)
+* [Arquitetura](docs/modules/ROOT/pages/arquitetura.adoc)
+* [EventBus](docs/modules/ROOT/pages/eventbus.adoc)
+* [SqlTemplate](docs/modules/ROOT/pages/data-sqltemplate.adoc)
+* [SqlBatch](docs/modules/ROOT/pages/data-sqlbatch.adoc)
+* [DI & Lifecycle](docs/modules/ROOT/pages/di-lifecycle.adoc)
+* [Migrations](docs/modules/ROOT/pages/migrations.adoc)
+* [Resiliência & SPI](docs/modules/ROOT/pages/resiliencia-spi.adoc)
+* [Observabilidade](docs/modules/ROOT/pages/observability.adoc)
+
+---
+
+# Filosofia
+
+O Footing não tenta ser:
+
+```text
+"mais um framework que resolve tudo"
+```
+
+A proposta é outra:
+
+```text
+.NET
+ │
+ ├── ASP.NET
+ ├── Dapper
+ ├── banco de dados
+ │
+ └── Footing.Framework
+       ├── EventBus
+       ├── SQL Template
+       ├── Batch
+       ├── Migrations
+       ├── DI
+       └── infraestrutura
+```
+
+Ele existe para resolver a infraestrutura repetitiva que normalmente acaba sendo copiada entre projetos.
+
+Pouca abstração.
+
+SQL explícito.
+
+Componentes pequenos.
+
+Dependências opcionais.
+
+E nenhuma obrigação de adotar uma arquitetura específica.
+
+---
+
+# Licença
+
+MIT — consulte [LICENSE](LICENSE).
+
+**Eder Rafael Telhado**
+
+[@edertelhado](https://github.com/edertelhado) · [CapybaraInfo](https://github.com/CapybaraInfo) · `edertelhado@outlook.com.br`
