@@ -2,7 +2,7 @@
 include::partial$_attributes.adoc[]
 :icons: font
 
-Migrations agnósticas a banco — `AddMigrations(Assembly)` com `*.sql` como `EmbeddedResource`, SQL-97 puro. Histórico usa `CHAR(1) Y/N` compatível com PostgreSQL, SQL Server e Firebird.
+Migrations SQL agnósticas a banco. `AddMigrations(Assembly)` registra `*.sql` embarcados como `EmbeddedResource` e aplica automaticamente no startup. Histórico de execução mantido em tabela própria, sem depender de ORM.
 
 == DDL
 
