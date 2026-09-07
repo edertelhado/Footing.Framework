@@ -1,6 +1,7 @@
 site:
   title: Footing.Framework
-  url: https://etelhado.github.io/Footing.Framework
+  url: https://edertelhado.github.io/Footing.Framework
+  start_page: footing-framework::index.adoc
 content:
   sources:
     - url: .
