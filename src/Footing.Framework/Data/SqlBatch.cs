@@ -14,18 +14,27 @@ namespace Footing.Framework.Data;
 /// </summary>
 public static class SqlBatch
 {
+    /// <summary>Global: quando true, todo Batch usa snake_case sem precisar passar useSnakeCase por chamada. Ativa Dapper MatchNamesWithUnderscores no startup.</summary>
+    public static bool GlobalUseSnakeCase { get; set; }
+
+    /// <summary>Ativa globalmente: Batch gera snake_case + Dapper mapeia user_name → UserName sem aspas no PG.</summary>
+    public static void EnableGlobalSnakeCase() { GlobalUseSnakeCase = true; Dapper.DefaultTypeMap.MatchNamesWithUnderscores = true; }
 
     /// <summary>
     /// Generates SQL + DynamicParameters without executing (testable without DB).
+    /// useSnakeCase: PascalCase → snake_case para colunas (PostgreSQL sem aspas). Também ativa Dapper DefaultTypeMap.MatchNamesWithUnderscores.
     /// </summary>
     public static (string Sql, DynamicParameters Parameters) BuildBatchInsert<T>(
         string tableName,
         IEnumerable<T> items,
-        string? columnsOverride = null)
+        string? columnsOverride = null,
+        bool useSnakeCase = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tableName);
         ValidateTableName(tableName);
         ArgumentNullException.ThrowIfNull(items);
+        var snake = useSnakeCase || GlobalUseSnakeCase;
+        if (snake) EnableSnakeCaseMapping();
 
         var list = items as IReadOnlyList<T> ?? items.ToList();
         if (list.Count == 0) return ("", new DynamicParameters());
@@ -33,7 +42,7 @@ public static class SqlBatch
         var props = GetProperties<T>(columnsOverride);
         if (props.Length == 0) return ("", new DynamicParameters());
 
-        var cols = string.Join(", ", props.Select(p => p.Name));
+        var cols = string.Join(", ", props.Select(p => snake ? ToSnakeCase(p.Name) : p.Name));
         var sql = $"INSERT INTO {tableName} ({cols}) VALUES ";
 
         var parms = new DynamicParameters();
@@ -52,6 +61,7 @@ public static class SqlBatch
     /// <summary>
     /// Executes chunked INSERT batch. Each chunk is a VALUES statement with batchSize rows.
     /// Auto-calc effectiveBatch = min(batchSize, 2100/colCount) to avoid SQL Server overflow when colCount>0.
+    /// useSnakeCase: PascalCase → snake_case para colunas (PostgreSQL sem aspas). Também ativa Dapper DefaultTypeMap.MatchNamesWithUnderscores.
     /// </summary>
     public static async Task<int> InsertBatchAsync<T>(
         IDbConnection connection,
@@ -59,6 +69,7 @@ public static class SqlBatch
         IEnumerable<T> items,
         IDbTransaction? transaction = null,
         int batchSize = 500,
+        bool useSnakeCase = false,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(connection);
@@ -66,6 +77,8 @@ public static class SqlBatch
         ValidateTableName(tableName);
         ArgumentNullException.ThrowIfNull(items);
         if (batchSize <= 0) throw new ArgumentOutOfRangeException(nameof(batchSize), "batchSize must be > 0");
+        var snake1 = useSnakeCase || GlobalUseSnakeCase;
+        if (snake1) EnableSnakeCaseMapping();
 
         var list = items as IReadOnlyList<T> ?? items.ToList();
         if (list.Count == 0) return 0;
@@ -86,7 +99,7 @@ public static class SqlBatch
         foreach (var chunk in list.Chunk(effectiveBatch))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var (sql, parms) = BuildBatchInsert(tableName, chunk);
+            var (sql, parms) = BuildBatchInsert(tableName, chunk, null, snake1);
             if (string.IsNullOrEmpty(sql)) continue;
             total += await connection.ExecuteAsync(new CommandDefinition(sql, parms, transaction, cancellationToken: cancellationToken));
         }
@@ -94,7 +107,7 @@ public static class SqlBatch
     }
 
     /// <summary>
-    /// Overload with columnsOverride for execution.
+    /// Overload with columnsOverride for execution. useSnakeCase: PascalCase → snake_case para colunas.
     /// </summary>
     public static async Task<int> InsertBatchAsync<T>(
         IDbConnection connection,
@@ -103,6 +116,7 @@ public static class SqlBatch
         string columnsOverride,
         IDbTransaction? transaction = null,
         int batchSize = 500,
+        bool useSnakeCase = false,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(connection);
@@ -110,6 +124,8 @@ public static class SqlBatch
         ValidateTableName(tableName);
         ArgumentNullException.ThrowIfNull(items);
         if (batchSize <= 0) throw new ArgumentOutOfRangeException(nameof(batchSize), "batchSize must be > 0");
+        var snake2 = useSnakeCase || GlobalUseSnakeCase;
+        if (snake2) EnableSnakeCaseMapping();
 
         var list = items as IReadOnlyList<T> ?? items.ToList();
         if (list.Count == 0) return 0;
@@ -127,7 +143,7 @@ public static class SqlBatch
         foreach (var chunk in list.Chunk(effectiveBatch))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var (sql, parms) = BuildBatchInsert(tableName, chunk, columnsOverride);
+            var (sql, parms) = BuildBatchInsert(tableName, chunk, columnsOverride, snake2);
             if (string.IsNullOrEmpty(sql)) continue;
             total += await connection.ExecuteAsync(new CommandDefinition(sql, parms, transaction, cancellationToken: cancellationToken));
         }
@@ -139,10 +155,11 @@ public static class SqlBatch
         string tableName,
         IEnumerable<T> items,
         int batchSize = 500,
+        bool useSnakeCase = false,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(uow);
-        return InsertBatchAsync(uow.Connection, tableName, items, uow.Transaction, batchSize, cancellationToken);
+        return InsertBatchAsync(uow.Connection, tableName, items, uow.Transaction, batchSize, useSnakeCase, cancellationToken);
     }
 
     public static Task<int> InsertBatchAsync<T>(
@@ -151,10 +168,11 @@ public static class SqlBatch
         IEnumerable<T> items,
         string columnsOverride,
         int batchSize = 500,
+        bool useSnakeCase = false,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(uow);
-        return InsertBatchAsync(uow.Connection, tableName, items, columnsOverride, uow.Transaction, batchSize, cancellationToken);
+        return InsertBatchAsync(uow.Connection, tableName, items, columnsOverride, uow.Transaction, batchSize, useSnakeCase, cancellationToken);
     }
 
     private static void ValidateTableName(string tableName)
@@ -171,5 +189,24 @@ public static class SqlBatch
         if (string.IsNullOrWhiteSpace(cols)) return all;
         var set = cols.Split(',').Select(c => c.Trim()).Where(c => !string.IsNullOrEmpty(c)).ToHashSet(StringComparer.OrdinalIgnoreCase);
         return all.Where(p => set.Contains(p.Name)).ToArray();
+    }
+
+    public static void EnableSnakeCaseMapping() => Dapper.DefaultTypeMap.MatchNamesWithUnderscores = true;
+
+    private static string ToSnakeCase(string name)
+    {
+        if (string.IsNullOrEmpty(name)) return name;
+        var sb = new System.Text.StringBuilder(name.Length + 5);
+        for (int i = 0; i < name.Length; i++)
+        {
+            char c = name[i];
+            if (char.IsUpper(c))
+            {
+                if (i > 0) sb.Append('_');
+                sb.Append(char.ToLowerInvariant(c));
+            }
+            else sb.Append(c);
+        }
+        return sb.ToString();
     }
 }
