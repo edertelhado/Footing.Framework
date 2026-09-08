@@ -100,7 +100,7 @@ Firebird: `SELECT FIRST @b * FROM OUTBOX WHERE PROCESSED_AT IS NULL`.
 services.AddSingleton<IOutboxStore, NpgsqlOutboxStore>(); // ou Firebird
 services.AddHostedService<OutboxProcessor>();
 
-// Uso transacional — atomicidade sem loss
+// Uso transacional — atomicidade sem loss (UnitOfWork está no pack: Footing.Framework.Data.UnitOfWork)
 await using var uow = new UnitOfWork(factory);
 await uow.BeginAsync();
 await conn.ExecuteAsync("INSERT INTO Pedidos ...", pedido, uow.Transaction);

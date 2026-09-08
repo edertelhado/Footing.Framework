@@ -89,6 +89,21 @@ Suporta `void`, `Task`, `ValueTask` — múltiplos `[PostConstruct]` invalido (`
 
 O scan utiliza reflexão sobre assemblies explícitos, mapeando atributos `[Injectable]`, `[Service]` e `[Repository]` para `ServiceDescriptor`. Determinístico e auditável — sem source generators ou mágica.
 
+*Filtro por namespace:* `ResolverExtensions` só registra interfaces cujo `Namespace` começa com `rootNamespace` (`"MeuProjeto"`), excluindo `IDisposable`/`IAsyncDisposable`. Classe sem interface vira `ServiceDescriptor` para o próprio tipo concreto. Ver `ResolverExtensions.cs:26`.
+
+*Defaults:* `[Service]` → `Transient` (sem estado), `[Repository]` → `Scoped` (um por request/scope), `[Injectable]` → obrigatório passar `InjectableLifetime`.
+
+*Conexão sem OpenAsync:* `IDbConnectionFactory.CreateConnection()` retorna `IDbConnection` (sync). Dapper chama `Open` automaticamente no `QueryAsync`/`ExecuteAsync`, por isso `using var conn = factory.CreateConnection(); await conn.QueryAsync(...)` funciona sem `OpenAsync`. Para transação use `UnitOfWork` do pack (`Footing.Framework.Data.UnitOfWork`), que abre via `DbConnection.OpenAsync` quando é `DbConnection` e faz `Rollback` no `DisposeAsync` se não houve `CommitAsync`.
+
+[source,csharp]
+----
+await using var uow = new UnitOfWork(factory);
+await uow.BeginAsync();
+await uow.Connection.ExecuteAsync(sql, parms, uow.Transaction);
+await uow.CommitAsync();
+----
+`UnitOfWork` está no pack (`Footing.Framework.Data`), não é exemplo para copiar.
+
 == Config — InjectConfig
 
 [source,csharp]

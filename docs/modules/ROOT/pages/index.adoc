@@ -2,9 +2,18 @@
 include::partial$_attributes.adoc[]
 :icons: font
 
-Infraestrutura pequena e pragmática para aplicações .NET que precisam de EventBus, SQL dinâmico, migrations e componentes de infraestrutura sem adotar um framework inteiro.
+Um conjunto de componentes de infraestrutura .NET independentes, que você pode usar separadamente, sem ORM obrigatório, sem broker obrigatório e sem precisar adotar uma arquitetura fechada.
 
-Filosofia: **TryAdd / SPI**. O core não obriga nada. Se não registrar `IOutboxStore`, não existe outbox. Se não registrar `IMigrationJournal`, usa `DefaultMigrationJournal` SQL-97.
+Use apenas o que precisar. O Footing não impõe domínio, persistência, mensageria ou arquitetura. Os componentes são independentes e extensíveis por interfaces/SPI. Se não registrar `IOutboxStore`, não existe outbox. Se não registrar `IMigrationJournal`, usa `DefaultMigrationJournal` SQL-97.
+
+[source,csharp]
+----
+// Program.cs — 20 segundos para entender
+builder.Services.AddMigrations(o => o.EmbeddedAssembly = typeof(Program).Assembly);
+var tpl = SqlTemplate.Parse("SELECT * FROM users {WHERE} {IF:Name} AND name=@Name {END} {ENDWHERE}");
+var r = tpl.Render(new { Name = "eder" });
+await conn.QueryAsync<User>(r.Sql, r.Parameters);
+----
 
 == O que resolve
 
@@ -26,4 +35,4 @@ Filosofia: **TryAdd / SPI**. O core não obriga nada. Se não registrar `IOutbox
 *   xref:resiliencia-spi.adoc[Resiliência SPI] — como plugar
 *   xref:observability.adoc[OTel & Health] — /health + traces
 
-NOTE: Framework é genérico, sem domínio — tudo via SPI.
+TIP: O Footing não quer substituir o ecossistema .NET; quer fornecer infraestrutura reutilizável sem sequestrar a arquitetura da aplicação.

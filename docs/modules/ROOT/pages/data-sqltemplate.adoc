@@ -176,6 +176,30 @@ tpl.Render(new { Ativo="Y" });                               // Y
 
 Para `or`, `and` com 3+ fatores, `()` e `!`, use blocos aninhados ou sequenciais.
 
+[cols="1,2,2"]
+|===
+| Expressão | Comportamento | Workaround
+
+| `{IF:Status == 'A' or Status == 'B'}`
+| `false` silencioso (`Debug.WriteLine` + omitido)
+| Aninhar ou `{CHOOSE}`:
+`{IF:Status=='A'} AND x {END} {IF:Status=='B'} AND x {END}` ou `{CHOOSE} {WHEN:Status=='A'} ... {ENDWHEN} {WHEN:Status=='B'} ... {ENDWHEN} {ENDCHOOSE}`
+
+| `{IF:!Ativo}`
+| `false` silencioso
+| `{IF:Ativo != true}` ou `{IFNOTDEFINED:Ativo}`
+
+| `{IF:(A and B)}`
+| `false` silencioso (`()` não suportado fora de `length()`/`defined()`)
+| `{IF:A and B}` sem parênteses, ou aninhar `{IF:A} {IF:B} ... {END} {END}`
+
+| `{IF:A and B and C}`
+| `false` (só `1× and`, 2 fatores)
+| Aninhar: `{IF:A and B} {IF:C} ... {END} {END}` ou sequencial
+|===
+
+NOTE: Falha silenciosa é intencional (fail-safe para dados resilientes) — template com typo `Nmae` ou tipo incompatível não quebra a query, só omite o trecho. Use `ValidateTemplate` fail-fast para sintaxe.
+
 == [[_trim]] `{TRIM}`
 
 Monta um trecho de SQL e normaliza automaticamente seu início e fim.
@@ -374,6 +398,30 @@ AND (email = @Email)
 E se nenhum dos filtros existir, o fragmento simplesmente desaparece.
 
 Você escreve cada condição começando naturalmente com `AND` ou `OR`. O `{TRIM}` remove o primeiro operador inválido e adiciona o prefixo somente quando o bloco realmente possui conteúdo.
+
+== Mock em testes (ISqlTemplate)
+
+[source,csharp]
+----
+// Repository recebe ISqlTemplate — mock fácil
+public class UserRepository(IDbConnectionFactory f, ISqlTemplate tpl) {
+  public Task<IEnumerable<User>> Search(object p) {
+    var r = tpl.Render(p);
+    return f.CreateConnection().QueryAsync<User>(r.Sql, r.Parameters);
+  }
+}
+// Teste
+var mock = new Mock<ISqlTemplate>();
+mock.Setup(m => m.Render(It.IsAny<object>())).Returns(new SqlResult("SELECT ...", new { Name="eder" }));
+// Produção
+ISqlTemplate tpl = SqlTemplate.Parse("SELECT * FROM users {WHERE} {IF:Name} AND name=@Name {END} {ENDWHERE}");
+----
+`SqlTemplate : ISqlTemplate` — `Parse` é factory static, `Render` é instância mockável.
+
+== Helpers agnósticos
+
+* `DbConnectionExtensions.OpenAsync(this IDbConnection, ct)` — abre sem cast para `NpgsqlConnection`/`FbConnection`. Dapper já auto-abre em `QueryAsync`, mas `UnitOfWork.BeginAsync` usa o helper para ser agnóstico (`DbConnection.OpenAsync` quando é `DbConnection`, senão `Open()`).
+* `UnitOfWork` está no pack (`Footing.Framework.Data.UnitOfWork`), não é exemplo para copiar.
 
 == Ver também
 

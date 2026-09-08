@@ -5,7 +5,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 namespace Footing.Framework.Data;
 
-public partial class SqlTemplate
+public partial class SqlTemplate : ISqlTemplate
 {
     private readonly string _template;
 

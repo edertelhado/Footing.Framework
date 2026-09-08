@@ -27,8 +27,7 @@ public sealed class UnitOfWork : IAsyncDisposable
     {
         if (_transaction is not null) return;
 
-        if (_connection.State != ConnectionState.Open)
-            await ((DbConnection)_connection).OpenAsync(cancellationToken);
+        await _connection.OpenAsync(cancellationToken);
 
         _transaction = _connection.BeginTransaction();
     }
