@@ -65,12 +65,14 @@ public static class MigrationServiceCollectionExtensions
 public sealed class MigrationHostedService : IHostedService
 {
     private readonly IMigrationRunner _runner;
+    private readonly IMigrationJournal _journal;
     private readonly Microsoft.Extensions.Options.IOptions<MigrationOptions> _options;
     private readonly Microsoft.Extensions.Logging.ILogger<MigrationHostedService>? _log;
 
-    public MigrationHostedService(IMigrationRunner runner, Microsoft.Extensions.Options.IOptions<MigrationOptions> options, Microsoft.Extensions.Logging.ILogger<MigrationHostedService>? log = null)
+    public MigrationHostedService(IMigrationRunner runner, IMigrationJournal journal, Microsoft.Extensions.Options.IOptions<MigrationOptions> options, Microsoft.Extensions.Logging.ILogger<MigrationHostedService>? log = null)
     {
         _runner = runner;
+        _journal = journal;
         _options = options;
         _log = log;
     }
@@ -81,6 +83,9 @@ public sealed class MigrationHostedService : IHostedService
         if (!o.AutoMigrate) return;
 
         _log?.LogInformation("Migrations: starting AutoMigrate (Validate={Validate}, Repair={Repair}, Baseline={Baseline})", o.ValidateOnMigrate, o.RepairOnMigrate, o.BaselineOnMigrate);
+
+        // Core: garante tabela antes de qualquer operação (Repair/Baseline/Migrate)
+        await _journal.EnsureHistoryTableAsync(cancellationToken);
 
         if (o.RepairOnMigrate)
         {
