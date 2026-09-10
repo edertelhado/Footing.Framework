@@ -65,15 +65,16 @@ public static class MigrationServiceCollectionExtensions
 public sealed class MigrationHostedService : IHostedService
 {
     private readonly IMigrationRunner _runner;
-    private readonly IMigrationJournal _journal;
     private readonly Microsoft.Extensions.Options.IOptions<MigrationOptions> _options;
+    private readonly IServiceProvider _serviceProvider;
     private readonly Microsoft.Extensions.Logging.ILogger<MigrationHostedService>? _log;
 
-    public MigrationHostedService(IMigrationRunner runner, IMigrationJournal journal, Microsoft.Extensions.Options.IOptions<MigrationOptions> options, Microsoft.Extensions.Logging.ILogger<MigrationHostedService>? log = null)
+    [ActivatorUtilitiesConstructor]
+    public MigrationHostedService(IMigrationRunner runner, Microsoft.Extensions.Options.IOptions<MigrationOptions> options, IServiceProvider serviceProvider, Microsoft.Extensions.Logging.ILogger<MigrationHostedService>? log = null)
     {
         _runner = runner;
-        _journal = journal;
         _options = options;
+        _serviceProvider = serviceProvider;
         _log = log;
     }
 
@@ -84,8 +85,9 @@ public sealed class MigrationHostedService : IHostedService
 
         _log?.LogInformation("Migrations: starting AutoMigrate (Validate={Validate}, Repair={Repair}, Baseline={Baseline})", o.ValidateOnMigrate, o.RepairOnMigrate, o.BaselineOnMigrate);
 
-        // Core: garante tabela antes de qualquer operação (Repair/Baseline/Migrate)
-        await _journal.EnsureHistoryTableAsync(cancellationToken);
+        // Core: garante tabela antes de qualquer operação (Repair/Baseline/Migrate) — opcional para não quebrar DI se journal não registrado
+        var journal = _serviceProvider.GetService(typeof(IMigrationJournal)) as IMigrationJournal;
+        if (journal != null) await journal.EnsureHistoryTableAsync(cancellationToken);
 
         if (o.RepairOnMigrate)
         {
